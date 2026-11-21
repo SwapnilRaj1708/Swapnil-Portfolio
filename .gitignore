@@ -15,5 +15,18 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
+# From the Next.js scaffold
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+*.pem
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
 # Blender work folder – never committed (D-22)
 /Blender Assets/
