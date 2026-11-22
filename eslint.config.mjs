@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Owner's Blender work (D-22) and generated check output: never linted.
+    "Blender Assets/**",
+    ".review/**",
+    ".lighthouseci/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

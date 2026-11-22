@@ -6,4 +6,4 @@
 | [assets.md](assets.md) | Every 3D asset the site ships: source, triangles, textures, sizes per tier, licence |
 | [licences.md](licences.md) | Every third-party package, font or asset and its licence |
 
-The working rules for this repo are in [`../CLAUDE.md`](../CLAUDE.md). Licences: [`../LICENSE`](../LICENSE) (code) and [`../CONTENT-LICENSE.md`](../CONTENT-LICENSE.md) (content).
+The working rules for this repo are in [`../CLAUDE.md`](../CLAUDE.md). How to run the checks – unit tests, browser smoke tests, review screenshots, the size report and Lighthouse – is in its [TESTING section](../CLAUDE.md#testing). Licences: [`../LICENSE`](../LICENSE) (code) and [`../CONTENT-LICENSE.md`](../CONTENT-LICENSE.md) (content).
