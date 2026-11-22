@@ -18,6 +18,10 @@ Code for Swapnil Raj's portfolio ("Inside the Machine"): a scroll-driven journey
 | Tailwind CSS | 4.3.3, via `@tailwindcss/turbopack` 4.3.3 (CSS-first config in `src/app/globals.css`; no PostCSS) |
 | ESLint | 9.39.5 with `eslint-config-next` 16.4.6 (flat config, `eslint.config.mjs`) |
 | `@types/node` / `@types/react` / `@types/react-dom` | 20.19.43 / 19.3.0 / 19.3.0 |
+| Vitest (`vitest`) | 4.1.12 – with `jsdom` 31.0.1 and `@vitejs/plugin-react` 6.3.0 (Vite 8.3.8) |
+| Testing Library | `@testing-library/react` 16.3.3, `@testing-library/jest-dom` 7.0.1, `@testing-library/user-event` 14.6.13 |
+| Playwright (`@playwright/test`) | 1.65.1 – Chromium only |
+| Lighthouse CI (`@lhci/cli`) | 0.16.1 (bundles Lighthouse 13.6.0) |
 
 Import alias: `@/*` → `src/*`.
 
@@ -33,10 +37,31 @@ Library interfaces change. Before using any library API, check the documentation
 | `npm run lint` | ESLint |
 | `npm run build` | Production build (prints first-load JS per route) |
 | `npm run start` | Serve the production build (`-- -p <port>` for another port) |
+| `npm test` | Unit and component tests (Vitest) – see TESTING |
+| `npm run test:e2e` | Browser smoke tests (Playwright) – see TESTING |
+| `npm run review:shots -- <ID> [routes…]` | Review screenshots into `.review/<ID>/` – see TESTING |
+| `npm run size` | First-load JS per route against the budget – see TESTING |
+| `npm run lighthouse -- [routes…]` | Lighthouse scores against the thresholds – see TESTING |
 
 Run tools only through the project's install: `npx --no-install <tool>` or `npm run <script>`. Never a bare `npx <name>`.
 
-CI (`.github/workflows/ci.yml`) runs on every pull request to `main`: `npm ci` → typecheck → lint → build, on the Node version in `.nvmrc`. Tests are added by PF-004.
+CI (`.github/workflows/ci.yml`) runs on every pull request to `main`, on the Node version in `.nvmrc`: `npm ci` → typecheck → lint → build → unit tests → Playwright Chromium install (with system deps) → smoke tests → size report. The Playwright report is uploaded as an artifact only when a step fails. Lighthouse and screenshots are local only.
+
+## TESTING
+
+All checks run against the project's own install. Scripts that need a server start `next start` on a **free port** and stop it when done (no process is left running). Output folders are git-ignored: `.review/`, `.lighthouseci/`, `test-results/`, `playwright-report/`. `Blender Assets/` is excluded from every test, lint and capture glob.
+
+| Command | What it checks | Output |
+|---|---|---|
+| `npm test` | Vitest + jsdom + Testing Library (jest-dom matchers): `src/**/*.test.{ts,tsx}`. Today: the home page renders name (only `h1`), role and pitch inside `main`; the launch switch drives robots metadata, `robots.txt` rules and the `X-Robots-Tag` header, tested for both values by mocking `@/config/site` (the real switch is never edited). `npm run test:watch` for watch mode. | Terminal |
+| `npm run test:e2e` | Playwright, Chromium only, against a production build (`next build` + `next start` via Playwright's `webServer`; `E2E_SKIP_BUILD=1` reuses an existing build). Projects `desktop` 1440×900 and `phone` 390×844 (touch, 3×). Checks: `/` returns 200 with no console or page errors; one `main` landmark and one `h1`; `X-Robots-Tag: noindex, nofollow` while not launched (absent once launched); an unknown route returns 404. Tests live in `e2e/`. First run on a machine: `npx --no-install playwright install chromium`. | Terminal; on failure `test-results/` (traces); in CI also `playwright-report/` |
+| `npm run review:shots -- <ID> [targets…] [--headed]` | Builds, then captures each target on desktop 1440×900 (1×) and phone 390×844 (3×). A target is a route (`/`, the default) or a name in `scripts/review/targets.mjs` (PF-008 adds chapter stops there). | `.review/<ID>/<target>-desktop.png`, `<target>-phone.png`, `capture.json` (viewport, URL, timestamp, WebGL vendor/renderer and whether it is a real GPU) |
+| `npm run size` | After `npm run build`: for each page route in the build (plus the 404 page), fetches the served HTML, collects every JS file it loads (`<script src>`, `<link rel=preload/modulepreload as=script>`), measures gzip (zlib default level, as `next start` serves it) and Brotli (q11). Gate: first-load JS ≤ 200 KB **gzip** (the stricter of the two). `nomodule` polyfills are printed but not counted (modern browsers never load them). Exit 1 over a limit. | Terminal table |
+| `npm run lighthouse -- [routes…]` | Builds, serves, and runs `lhci collect` in Playwright's Chromium: Lighthouse mobile config (its default: phone emulation, simulated throttling), 3 runs per route (default `/`), median per category. Gates: performance ≥ 90, accessibility ≥ 95, best practices ≥ 95, SEO ≥ 95. While the site is not launched, `is-crawlable` fails by design: the SEO gate leaves that audit out (weighted the way Lighthouse weights the category) and it is printed separately as "expected before launch". Local only, not in CI. | Terminal; `.lighthouseci/reports/` (HTML + JSON per run) |
+
+Limits live in one file, `budgets.config.mjs` (values from STANDARDS §3; later items add the 3D chunk and asset limits there). Changing a value is an owner decision.
+
+**GPU note.** Captures and numbers only count when they ran on a real GPU (STANDARDS §8), and every capture records what it got in `capture.json` (`webgl.renderer`, `webgl.gpu`: `hardware`, `software (not a real GPU)` or `no WebGL context`). `review:shots` launches Playwright's full Chromium (`channel: "chromium"`, new headless mode). On the owner's Windows laptop that gets the real GPU even headless (2026-11-21: WebGL 2, `ANGLE (AMD, AMD Radeon(TM) Graphics … Direct3D11 …, D3D11)`). Playwright's default headless shell, which the smoke tests use, gets **SwiftShader** (software) even on that laptop, so never take captures or frame numbers from it. If a machine reports SwiftShader or no WebGL, rerun with `--headed`, and say in the report which renderer the images came from. CI runners have no GPU: the smoke tests there run on a software renderer and must not depend on WebGL output.
 
 Note: `typecheck` works on a clean checkout because no code uses Next's generated route types. If code starts using `PageProps` / `LayoutProps`, the script must run `next typegen` first.
 
@@ -167,11 +192,17 @@ Page experience, every route, reference phone: LCP ≤ 2.5 s, CLS ≤ 0.05, inte
 ## Folder map
 
 ```
-.github/workflows/ci.yml   CI on pull requests: install, typecheck, lint, build
+.github/workflows/ci.yml   CI on pull requests: install, typecheck, lint, build, unit, e2e, size
 Blender Assets/            owner's Blender work – git-ignored, read-only, never delete (D-22)
 docs/                      README (index), architecture, assets, licences
-src/app/                   App Router: layout.tsx, page.tsx, robots.ts, globals.css (Tailwind + tokens)
+e2e/                       Playwright browser smoke tests
+scripts/                   size-report, review-shots, lighthouse; lib/prod-server (free-port next start)
+scripts/review/targets.mjs named capture targets and viewports for review:shots
+src/app/                   App Router: layout.tsx, page.tsx, robots.ts, globals.css (Tailwind + tokens); *.test.tsx beside the code
 src/config/site.ts         launch switch (SITE_LAUNCHED)
+budgets.config.mjs         budget limits used by the size report and Lighthouse (STANDARDS §3)
+playwright.config.ts       Playwright: desktop + phone projects, production webServer
+vitest.config.mts          Vitest: jsdom, React plugin, @/* alias; vitest.setup.ts adds jest-dom
 .env.example               env var names only, never values
 .nvmrc                     Node major version for CI and local use
 CLAUDE.md                  this file
