@@ -1,23 +1,173 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Design tokens – the one source for colour, type, spacing, radii and timing.
+ *
+ * Tailwind turns every token below into a utility (bg-surface, text-text-muted, duration-fast,
+ * ease-signal, rounded-xs …) and a CSS custom property on :root (var(--color-surface) …).
+ * Components use these utilities only – no raw colour, spacing or timing values
+ * (STANDARDS.md §9; checked by src/styles/tokens-only.test.ts).
+ *
+ * Colours: BRIEF.md §4 (look bible, LOCKED), "Hex (DOM)" column. Derived tints are color-mix()
+ * of those tokens only, always `in srgb` so src/lib/design-tokens.ts can resolve them for the
+ * contrast check (src/styles/contrast.test.ts). Dark only.
+ */
+@theme static {
+  --color-*: initial;
+
+  /* Palette (BRIEF.md §4) */
+  --color-background: #07090c;
+  --color-surface: #12161c;
+  --color-surface-raised: #1c222a;
+  --color-accent-trace: #e08a3c;
+  --color-accent-signal: #cff6ff;
+  --color-text: #e8ecf1;
+  --color-text-muted: #8e97a3;
+
+  /* Derived tints (color-mix of palette tokens only) */
+  --color-line: color-mix(in srgb, var(--color-text) 12%, var(--color-background));
+  --color-line-strong: color-mix(in srgb, var(--color-text) 26%, var(--color-background));
+  --color-signal-soft: color-mix(in srgb, var(--color-accent-signal) 14%, var(--color-surface));
+  --color-signal-line: color-mix(in srgb, var(--color-accent-signal) 45%, var(--color-background));
+  --color-trace-hover: color-mix(in srgb, var(--color-accent-trace) 82%, var(--color-text));
+
+  /* Timing (BRIEF.md §4 Motion: signals, not bounces – linear travel with a soft ease-out) */
+  --transition-duration-instant: 120ms;
+  --transition-duration-fast: 200ms;
+  --transition-duration-moderate: 320ms;
+  --transition-duration-slow: 600ms;
+  --ease-*: initial;
+  --ease-signal: cubic-bezier(0.16, 1, 0.3, 1);
+  /* `ease-linear` is built in. */
+  --default-transition-duration: var(--transition-duration-fast);
+  --default-transition-timing-function: var(--ease-signal);
+
+  /* Ambient loop for the status dot: an opacity ramp, never a flash (STANDARDS.md §4). */
+  --animate-signal-pulse: signal-pulse 2.4s var(--ease-signal) infinite;
+  @keyframes signal-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  /* Radii: sharp, like machine readouts. `rounded-none` (0) and `rounded-full` are built in. */
+  --radius-*: initial;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+
+  /* Shadows: the only one is the status dot's halo. */
+  --shadow-*: initial;
+  --shadow-signal-halo: 0 0 0 3px var(--color-signal-soft);
+
+  /* Spacing: Tailwind's numeric scale is 4 px based (p-1 = 4px, p-4 = 16px). Named layout steps: */
+  --spacing: 0.25rem;
+  --spacing-gutter: clamp(1rem, 0.6rem + 2vw, 2.5rem);
+  --spacing-header: 4rem;
+  --spacing-section: clamp(4rem, 2.5rem + 6vw, 8rem);
+  --spacing-tap: 2.75rem; /* 44 px minimum touch target */
+
+  /* Content widths */
+  --container-content: 80rem;
+  --container-prose: 40rem;
+
+  /* Fluid type scale (rem bounds, so it follows browser zoom and font-size settings) */
+  --text-*: initial;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.25rem;
+  --text-label--letter-spacing: 0.08em;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: clamp(1rem, 0.975rem + 0.125vw, 1.0625rem);
+  --text-base--line-height: 1.65;
+  --text-lg: clamp(1.125rem, 1.07rem + 0.27vw, 1.3125rem);
+  --text-lg--line-height: 1.5;
+  --text-xl: clamp(1.375rem, 1.26rem + 0.55vw, 1.75rem);
+  --text-xl--line-height: 1.3;
+  --text-2xl: clamp(1.75rem, 1.52rem + 1.1vw, 2.5rem);
+  --text-2xl--line-height: 1.15;
+  --text-2xl--letter-spacing: -0.01em;
+  --text-3xl: clamp(2.25rem, 1.8rem + 2.2vw, 3.75rem);
+  --text-3xl--line-height: 1.05;
+  --text-3xl--letter-spacing: -0.015em;
+  --text-display: clamp(2.75rem, 1.95rem + 4vw, 5.5rem);
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.02em;
+
+  /* Focus ring (one style everywhere) */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
 }
 
+/*
+ * Font families. The --ff-* variables come from the active pairing in src/fonts (next/font sets
+ * them on <html>). `inline` makes utilities read the variables where they are used, so
+ * /dev/type can show other pairings inside a wrapper.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --font-*: initial;
+  --font-sans: var(--ff-body), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--ff-heading), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--ff-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* One visible focus style everywhere: 2 px, accent-signal, offset. */
+@utility focus-ring {
+  outline: var(--focus-ring-width) solid var(--color-accent-signal);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Mono readout label: uppercase, tracked. */
+@utility label-mono {
+  @apply font-mono;
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  letter-spacing: var(--text-label--letter-spacing);
+  text-transform: uppercase;
+}
+
+/* First screen of a page, below the sticky header. */
+@utility min-h-first-screen {
+  min-height: calc(100svh - var(--spacing-header));
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    scroll-padding-top: var(--spacing-header);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+
+  :focus-visible {
+    @apply focus-ring;
+  }
+
+  ::selection {
+    background-color: var(--color-signal-soft);
+    color: var(--color-text);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
+/* Reduced motion: no movement. Only opacity may still transition; ambient loops stop. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-property: opacity !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
 }

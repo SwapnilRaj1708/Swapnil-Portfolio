@@ -8,22 +8,55 @@
 // name in NAMED_TARGETS.
 
 /**
+ * @typedef {object} Viewport
+ * @property {string} name
+ * @property {number} width
+ * @property {number} height
+ * @property {number} deviceScaleFactor
+ * @property {boolean} isMobile
+ * @property {boolean} hasTouch
+ */
+
+/**
  * @typedef {object} Target
  * @property {string} name     File-name slug, e.g. "home" → home-desktop.png
  * @property {string} path     Route to open, e.g. "/"
  * @property {(page: import("@playwright/test").Page) => Promise<void>} [prepare]
+ * @property {Viewport[]} [viewports]  Overrides VIEWPORTS for this target
  */
 
-/** @type {Record<string, Omit<Target, "name">>} */
-export const NAMED_TARGETS = {
-  // Chapter stops are added by PF-008, for example:
-  // "port-start": { path: "/", prepare: async (page) => { /* scroll to the start of `port` */ } },
-};
-
+/** @type {Viewport[]} */
 export const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
   { name: "phone", width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
 ];
+
+/** Narrowest supported layout: 360 CSS px (also what 200 % zoom on a 720 px window gives). */
+export const NARROW_VIEWPORT = {
+  name: "narrow",
+  width: 360,
+  height: 780,
+  deviceScaleFactor: 2,
+  isMobile: true,
+  hasTouch: true,
+};
+
+/** @type {Record<string, Omit<Target, "name">>} */
+export const NAMED_TARGETS = {
+  // `/` at 360 px wide → home-360-narrow.png
+  "home-360": { path: "/", viewports: [NARROW_VIEWPORT] },
+  // Phone menu opened → menu-open-phone.png
+  "menu-open": {
+    path: "/",
+    viewports: [VIEWPORTS[1]],
+    prepare: async (page) => {
+      await page.getByRole("button", { name: "Menu" }).click();
+      await page.getByRole("link", { name: "Work" }).waitFor({ state: "visible" });
+    },
+  },
+  // Chapter stops are added by PF-008, for example:
+  // "port-start": { path: "/", prepare: async (page) => { /* scroll to the start of `port` */ } },
+};
 
 export const DEFAULT_TARGETS = ["/"];
 

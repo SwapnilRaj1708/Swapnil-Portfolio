@@ -1,12 +1,13 @@
-// Review screenshots: npm run review:shots -- <ID> [routes or named targets…] [--headed]
+// Review screenshots: npm run review:shots -- <ID> [routes or named targets…] [--headed] [--full-page]
 //
-// Builds the site (the npm script runs `next build` first), serves it with `next start` on a
-// free port, and captures every target on a desktop (1440×900) and a phone (390×844) viewport
+// Builds the site (the npm script runs `npm run build` first: font download, then `next build`),
+// serves it with `next start` on a free port, and captures every target on a desktop (1440×900) and a phone (390×844) viewport
 // into .review/<ID>/ as <target>-desktop.png and <target>-phone.png. It also writes
 // .review/<ID>/capture.json with the viewport, URL, timestamp and the WebGL renderer the page
 // reports, so a review can tell a software renderer (SwiftShader) from a real GPU.
 //
-// --headed  runs a visible browser window, which normally gets the real GPU.
+// --headed     runs a visible browser window, which normally gets the real GPU.
+// --full-page  captures the whole scrollable page instead of the first screen.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -34,19 +35,51 @@ function readWebGlInfo() {
   return info;
 }
 
+// Chromium cannot capture an image taller than about 16 384 device pixels; past that the
+// picture repeats. Full-page captures taller than this are split into numbered parts.
+const MAX_CAPTURE_DEVICE_PX = 16000;
+
+/**
+ * Takes the screenshot(s) for one target and viewport; returns the file names written.
+ * @param {import("@playwright/test").Page} page
+ */
+async function capture(page, outDir, file, fullPage, vp) {
+  if (!fullPage) {
+    await page.screenshot({ path: path.join(outDir, file) });
+    return [file];
+  }
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  const partHeight = Math.floor(MAX_CAPTURE_DEVICE_PX / vp.deviceScaleFactor);
+  if (height <= partHeight) {
+    await page.screenshot({ path: path.join(outDir, file), fullPage: true });
+    return [file];
+  }
+  const files = [];
+  for (let y = 0, part = 1; y < height; y += partHeight, part++) {
+    const name = file.replace(/\.png$/, `-part${part}.png`);
+    await page.screenshot({
+      path: path.join(outDir, name),
+      fullPage: true,
+      clip: { x: 0, y, width: vp.width, height: Math.min(partHeight, height - y) },
+    });
+    files.push(name);
+  }
+  return files;
+}
+
 function parseArgs(argv) {
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   const rest = argv.filter((a) => !a.startsWith("--"));
   const [id, ...targets] = rest;
   if (!id || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
-    throw new Error("Usage: npm run review:shots -- <ID> [routes…] [--headed]   (e.g. PF-004 /)");
+    throw new Error("Usage: npm run review:shots -- <ID> [routes…] [--headed] [--full-page]   (e.g. PF-004 /)");
   }
-  for (const f of flags) if (f !== "--headed") throw new Error(`Unknown option ${f}`);
-  return { id, targets, headed: flags.has("--headed") };
+  for (const f of flags) if (f !== "--headed" && f !== "--full-page") throw new Error(`Unknown option ${f}`);
+  return { id, targets, headed: flags.has("--headed"), fullPage: flags.has("--full-page") };
 }
 
 async function main() {
-  const { id, targets: targetArgs, headed } = parseArgs(process.argv.slice(2));
+  const { id, targets: targetArgs, headed, fullPage } = parseArgs(process.argv.slice(2));
   const targets = resolveTargets(targetArgs);
   const outDir = path.join(ROOT, ".review", id);
   await mkdir(outDir, { recursive: true });
@@ -59,7 +92,7 @@ async function main() {
   const captures = [];
   try {
     for (const target of targets) {
-      for (const vp of VIEWPORTS) {
+      for (const vp of target.viewports ?? VIEWPORTS) {
         const context = await browser.newContext({
           viewport: { width: vp.width, height: vp.height },
           deviceScaleFactor: vp.deviceScaleFactor,
@@ -74,13 +107,14 @@ async function main() {
         if (target.prepare) await target.prepare(page);
 
         const file = `${target.name}-${vp.name}.png`;
-        await page.screenshot({ path: path.join(outDir, file) });
+        const files = await capture(page, outDir, file, fullPage, vp);
         const webgl = await page.evaluate(readWebGlInfo);
         captures.push({
           target: target.name,
-          file,
+          file: files.length === 1 ? files[0] : files,
           url: url.replace(server.origin, ""),
           status: response?.status() ?? null,
+          fullPage,
           viewport: {
             name: vp.name,
             width: vp.width,
@@ -99,7 +133,9 @@ async function main() {
           },
         });
         await context.close();
-        console.log(`wrote .review/${id}/${file}  (${vp.width}×${vp.height} @${vp.deviceScaleFactor}x)`);
+        for (const f of files) {
+          console.log(`wrote .review/${id}/${f}  (${vp.width}×${vp.height} @${vp.deviceScaleFactor}x)`);
+        }
       }
     }
   } finally {

@@ -1,19 +1,35 @@
 import { expect, test } from "@playwright/test";
 import { NOINDEX_DIRECTIVE, SITE_LAUNCHED } from "../src/config/site";
 
+// Linked from the navigation but built later; Next's <Link> prefetch gets a 404 for them.
+// PF-006 builds /work and /resume – empty this list then.
+const NOT_YET_BUILT = ["/work", "/resume"];
+
 test.describe("home page smoke", () => {
   test("loads with status 200 and no console or page errors", async ({ page }) => {
     const errors: string[] = [];
+    const failed: string[] = [];
     page.on("console", (msg) => {
-      if (msg.type() === "error") errors.push(`console: ${msg.text()}`);
+      // A failed request also logs "Failed to load resource"; those are judged by URL below.
+      if (msg.type() === "error" && !msg.text().startsWith("Failed to load resource")) {
+        errors.push(`console: ${msg.text()}`);
+      }
     });
     page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+    page.on("response", (res) => {
+      if (res.status() < 400) return;
+      const { pathname } = new URL(res.url());
+      if (res.status() === 404 && NOT_YET_BUILT.includes(pathname)) return;
+      failed.push(`${res.status()} ${pathname}`);
+    });
+    page.on("requestfailed", (req) => failed.push(`failed ${req.url()}`));
 
     const response = await page.goto("/", { waitUntil: "load" });
     expect(response?.status()).toBe(200);
     // Let hydration and any late scripts run before judging the console.
     await page.waitForLoadState("networkidle");
     expect(errors).toEqual([]);
+    expect(failed).toEqual([]);
   });
 
   test("has a main landmark and exactly one h1", async ({ page }) => {
