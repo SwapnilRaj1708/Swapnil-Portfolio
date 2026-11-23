@@ -22,6 +22,7 @@ Code for Swapnil Raj's portfolio ("Inside the Machine"): a scroll-driven journey
 | Testing Library | `@testing-library/react` 16.3.3, `@testing-library/jest-dom` 7.0.1, `@testing-library/user-event` 14.6.13 |
 | Playwright (`@playwright/test`) | 1.65.1 – Chromium only |
 | Lighthouse CI (`@lhci/cli`) | 0.16.1 (bundles Lighthouse 13.6.0) |
+| `clsx` | 2.1.1 – class-name merging (runtime dependency) |
 
 Import alias: `@/*` → `src/*`.
 
@@ -32,14 +33,15 @@ Library interfaces change. Before using any library API, check the documentation
 | Command | What it does |
 |---|---|
 | `npm ci` | Clean install from `package-lock.json` (use this to restore dependencies) |
-| `npm run dev` | Development server (http://localhost:3000) |
+| `npm run dev` | Development server (http://localhost:3000); `predev` runs `fonts:fetch` first |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm run build` | Production build (prints first-load JS per route) |
+| `npm run fonts:fetch` | Downloads build-time fonts (Satoshi) into git-ignored `src/fonts/vendor/` and checks the pinned SHA-256; skips when the pinned file is present, `-- --force` re-downloads, exit 1 on any failure or hash mismatch |
+| `npm run build` | Production build (prints first-load JS per route); `prebuild` runs `fonts:fetch` first |
 | `npm run start` | Serve the production build (`-- -p <port>` for another port) |
 | `npm test` | Unit and component tests (Vitest) – see TESTING |
 | `npm run test:e2e` | Browser smoke tests (Playwright) – see TESTING |
-| `npm run review:shots -- <ID> [routes…]` | Review screenshots into `.review/<ID>/` – see TESTING |
+| `npm run review:shots -- <ID> [targets…] [--full-page]` | Review screenshots into `.review/<ID>/` – see TESTING |
 | `npm run size` | First-load JS per route against the budget – see TESTING |
 | `npm run lighthouse -- [routes…]` | Lighthouse scores against the thresholds – see TESTING |
 
@@ -53,9 +55,9 @@ All checks run against the project's own install. Scripts that need a server sta
 
 | Command | What it checks | Output |
 |---|---|---|
-| `npm test` | Vitest + jsdom + Testing Library (jest-dom matchers): `src/**/*.test.{ts,tsx}`. Today: the home page renders name (only `h1`), role and pitch inside `main`; the launch switch drives robots metadata, `robots.txt` rules and the `X-Robots-Tag` header, tested for both values by mocking `@/config/site` (the real switch is never edited). `npm run test:watch` for watch mode. | Terminal |
-| `npm run test:e2e` | Playwright, Chromium only, against a production build (`next build` + `next start` via Playwright's `webServer`; `E2E_SKIP_BUILD=1` reuses an existing build). Projects `desktop` 1440×900 and `phone` 390×844 (touch, 3×). Checks: `/` returns 200 with no console or page errors; one `main` landmark and one `h1`; `X-Robots-Tag: noindex, nofollow` while not launched (absent once launched); an unknown route returns 404. Tests live in `e2e/`. First run on a machine: `npx --no-install playwright install chromium`. | Terminal; on failure `test-results/` (traces); in CI also `playwright-report/` |
-| `npm run review:shots -- <ID> [targets…] [--headed]` | Builds, then captures each target on desktop 1440×900 (1×) and phone 390×844 (3×). A target is a route (`/`, the default) or a name in `scripts/review/targets.mjs` (PF-008 adds chapter stops there). | `.review/<ID>/<target>-desktop.png`, `<target>-phone.png`, `capture.json` (viewport, URL, timestamp, WebGL vendor/renderer and whether it is a real GPU) |
+| `npm test` | Vitest + jsdom + Testing Library (jest-dom matchers): `src/**/*.test.{ts,tsx}`. Today: the home page (inside the shell) renders name (only `h1`), role, pitch and availability inside the one `main`, a skip link to `#main`, and the footer (email, GitHub, LinkedIn, copyright); the launch switch drives robots metadata, `robots.txt` rules and the `X-Robots-Tag` header, tested for both values by mocking `@/config/site` (the real switch is never edited); navigation has the six links in order with their targets; the mobile menu (aria-expanded/aria-controls, Escape closes and returns focus, choosing a link closes it); the Simple-view switch and store (aria-pressed, persisted, survives `localStorage` throwing, follows other tabs); **contrast** – every pair in `src/styles/contrast-pairs.ts`, computed from the colour tokens read out of `globals.css`, text ≥ 4.5:1 and non-text ≥ 3:1; **tokens only** – no raw hex/colour functions, arbitrary values with units or numeric durations in `src/components` and `src/app` `.tsx` files. `next/font/google` and `next/font/local` are stubbed in `vitest.setup.ts` (add a name there when a new Google font is used); unit tests never need the downloaded font files. `npm run test:watch` for watch mode. | Terminal |
+| `npm run test:e2e` | Playwright, Chromium only, against a production build (`next build` + `next start` via Playwright's `webServer`; `E2E_SKIP_BUILD=1` reuses an existing build). Projects `desktop` 1440×900 and `phone` 390×844 (touch, 3×). Checks: `/` returns 200 with no console or page errors and no failed requests (except the 404 prefetches of `/work` and `/resume` listed in `NOT_YET_BUILT` in `e2e/smoke.spec.ts` – PF-006 empties that list); one `main` landmark and one `h1`; `X-Robots-Tag: noindex, nofollow` while not launched (absent once launched); an unknown route returns 404. Shell (`e2e/shell.spec.ts`): Tab from the skip link reaches Work, About, Experience, Skills, Contact, Resume and the Simple-view switch in order (on phone it opens the menu with Enter), every focus stop shows the 2 px accent-signal outline and is on screen; the skip link focuses `main`; the phone menu closes on Escape and returns focus; `/dev/styleguide` and `/dev/type` return 404 (skipped when the build has `ENABLE_DEV_PAGES=1`); no horizontal scroll at 360 px (= 200 % zoom on 720 px) and 1920 px; without JavaScript the nav links are shown; reduced motion stops the status pulse. Tests live in `e2e/`. First run on a machine: `npx --no-install playwright install chromium`. | Terminal; on failure `test-results/` (traces); in CI also `playwright-report/` |
+| `npm run review:shots -- <ID> [targets…] [--headed] [--full-page]` | Builds, then captures each target on desktop 1440×900 (1×) and phone 390×844 (3×). A target is a route (`/`, the default) or a name in `scripts/review/targets.mjs`; a named target may set its own `viewports` and a `prepare` step. Named today: `home-360` (`/` at 360×780, 2×) and `menu-open` (phone, menu opened). PF-008 adds chapter stops. `--full-page` captures the whole page; pages taller than 16 000 device px are split into `-part1`, `-part2` … (Chromium repeats the image beyond ~16 384 px). Dev pages need `ENABLE_DEV_PAGES=1` in the environment (the script's build reads it). | `.review/<ID>/<target>-<viewport>.png`, `capture.json` (viewport, URL, timestamp, full-page, WebGL vendor/renderer and whether it is a real GPU) |
 | `npm run size` | After `npm run build`: for each page route in the build (plus the 404 page), fetches the served HTML, collects every JS file it loads (`<script src>`, `<link rel=preload/modulepreload as=script>`), measures gzip (zlib default level, as `next start` serves it) and Brotli (q11). Gate: first-load JS ≤ 200 KB **gzip** (the stricter of the two). `nomodule` polyfills are printed but not counted (modern browsers never load them). Exit 1 over a limit. | Terminal table |
 | `npm run lighthouse -- [routes…]` | Builds, serves, and runs `lhci collect` in Playwright's Chromium: Lighthouse mobile config (its default: phone emulation, simulated throttling), 3 runs per route (default `/`), median per category. Gates: performance ≥ 90, accessibility ≥ 95, best practices ≥ 95, SEO ≥ 95. While the site is not launched, `is-crawlable` fails by design: the SEO gate leaves that audit out (weighted the way Lighthouse weights the category) and it is printed separately as "expected before launch". Local only, not in CI. | Terminal; `.lighthouseci/reports/` (HTML + JSON per run) |
 
@@ -74,6 +76,33 @@ One boolean: `SITE_LAUNCHED` in `src/config/site.ts`. It is `false` until launch
 3. `/robots.txt` is `Disallow: /` (`src/app/robots.ts`).
 
 When `true`, all three lift. Do not set `robots` metadata in any child layout or page: metadata merges shallowly and a child value would replace the switch.
+
+## Design system and DOM shell (PF-005)
+
+**Tokens – one source: the `@theme` blocks in `src/app/globals.css`.** Tailwind makes each a utility and a `:root` custom property.
+
+| Group | Tokens (utility examples) |
+|---|---|
+| Colour (BRIEF §4 "Hex (DOM)", dark only) | `background` #07090C · `surface` #12161C · `surface-raised` #1C222A · `accent-trace` #E08A3C · `accent-signal` #CFF6FF · `text` #E8ECF1 · `text-muted` #8E97A3 → `bg-surface`, `text-text-muted`, `border-accent-signal` |
+| Derived tints | only `color-mix(in srgb, var(--color-a) N%, var(--color-b))` of palette tokens: `line`, `line-strong` (borders), `signal-soft` (selected chip, selection), `signal-line` (link underline), `trace-hover` (primary button hover). Tailwind's default palette is removed. |
+| Type (fluid, rem bounds) | `text-label` (mono labels) · `text-sm` · `text-base` · `text-lg` · `text-xl` · `text-2xl` · `text-3xl` · `text-display`; utility `label-mono` = mono, label size, tracked, uppercase |
+| Spacing | Tailwind's 4 px scale (`p-1` = 4 px) plus `gutter` (fluid page gutter), `header` (4rem), `section` (fluid), `tap` (44 px); widths `max-w-content` (80rem), `max-w-prose` (40rem) |
+| Radii | `rounded-none` 0 · `rounded-xs` 2 px · `rounded-sm` 4 px (others removed) |
+| Timing | `duration-instant` 120 ms · `duration-fast` 200 ms (default) · `duration-moderate` 320 ms · `duration-slow` 600 ms; `ease-signal` (soft ease-out, default) · `ease-linear`; `animate-signal-pulse` (opacity ramp) |
+| Focus | one style everywhere: global `:focus-visible` = utility `focus-ring` (2 px solid accent-signal, 2 px offset). Never remove it. |
+
+Reduced motion: only opacity may transition; animations stop (end of `globals.css`). When a component puts a colour on a new background, add the pair to `src/styles/contrast-pairs.ts` (the test and the style guide read it).
+
+**Components** (tokens only, `clsx` for classes):
+- `src/components/ui/`: `Button` (variant `primary` | `secondary` | `ghost`, size `sm` | `md` | `lg`, `disabled`), `Link` (variant `inline` | `nav` (with `current`) | `external` – new tab, says so to screen readers; internal paths use `next/link`), `Chip` + `ChipGroup` (real radio/checkbox input in a label, inside fieldset/legend – native keyboard and no-JS form behaviour), `Panel` (tone `surface` | `raised`, optional readout `label`), `StatusChip` (availability text), `SectionHeading` (`index`, `label` → "03 / EXPERIENCE", then h2/h3).
+- `src/components/layout/`: `SiteShell` (skip link, header, `main#main`, footer – used by the root layout), `SiteHeader`, `SiteNav` (client: inline from `lg`, disclosure menu below; Escape closes and returns focus; shown as a list without JS), `SimpleViewSwitch` (client, `aria-pressed`), `SiteFooter`, `SkipLink`, `Container` (`grid` = 4/8/12 columns).
+- Simple view: store `src/lib/simple-view.ts` (no React; `localStorage` key `simple-view`, try/catch everywhere), hook `src/lib/use-simple-view.ts`. PF-007 wires it to the static tier.
+
+**Content:** site metadata, navigation and footer come from `src/content/site.ts` (BRIEF §8/§5 only). No copy in components.
+
+**Fonts module `src/fonts/`:** four pairings, all served by the site itself with generated fallback metrics (→ no layout shift); the browser never contacts a font host. **Active: D** (owner decision D-31) – headings Satoshi, body Inter, labels JetBrains Mono (`pairing-d.ts`). Production loads only D; A, B, C appear on `/dev/type` only. A, B, C are SIL OFL via `next/font/google` (downloaded at build): A Space Grotesk + Inter + JetBrains Mono (`pairing-a.ts`), B Geist + Geist Mono (`pairing-b.ts`), C Archivo + IBM Plex Sans + IBM Plex Mono (`pairing-c.ts`). D = A with Satoshi headings: Satoshi is under the ITF Free Font License, which allows self-hosting but forbids making the files available through a public repository, so **its files are never committed**: `scripts/fetch-fonts.mjs` (npm `prebuild`/`predev`) downloads the official Fontshare package (`https://api.fontshare.com/v2/fonts/download/satoshi`), extracts `Satoshi-Variable.woff2` and `FFL.txt` byte for byte into `src/fonts/vendor/satoshi/` (git-ignored: `/src/fonts/vendor/`), and fails the build (exit 1) if the download or the checks fail; `next/font/local` reads the file from there. Never subset, convert or modify the Satoshi file (FFL §02). **Pinned file:** `Satoshi-Variable.woff2` must match the `sha256` in `scripts/fetch-fonts.mjs` (`e739aff9…3eb47f`, 42 588 B, pinned 2026-11-23). A file on disk that differs is downloaded again; a download that differs fails the build with both hashes and changes nothing on disk. To accept a new Satoshi release on purpose (owner decision): read its `FFL.txt`, check it on `/dev/type`, set the `sha256` value to the "received" hash the failed run printed, run `npm run fonts:fetch -- --force`. **Outage risk:** every build (local, CI, Vercel) needs Fontshare reachable unless `src/fonts/vendor/` already holds the pinned file (local machines keep it between builds; CI and Vercel start clean). If Fontshare is down, moves the URL, or serves a new release, builds stop until it is back or the pin is updated – there is no fallback font by design. A short-term escape is switching `src/fonts/index.ts` back to pairing A (owner decision). Production loads one pairing: `src/fonts/index.ts` re-exports it as `activePairing` – switching is that one line. Each pairing sets `--ff-heading`, `--ff-body`, `--ff-mono`; utilities `font-heading`, `font-sans` (body), `font-mono`. Keep pairings in separate files: next/font preloads every font of every module a page imports.
+
+**Dev-only pages** `/dev/styleguide` (every component and state, colour tokens with contrast ratios, type scale, spacing/radii/timing) and `/dev/type` (the four pairings side by side) are files named `page.dev.tsx`. `next.config.ts` adds the `dev.tsx` page extension only when **`ENABLE_DEV_PAGES=1`** is set at build/dev time; otherwise they are not routes, not built, and return 404 (also on Vercel – never set the variable there). Use: `$env:ENABLE_DEV_PAGES="1"; npm run dev` (PowerShell). The name is in `.env.example`.
 
 ## Git rules (WORKFLOW §3)
 
@@ -195,11 +224,18 @@ Page experience, every route, reference phone: LCP ≤ 2.5 s, CLS ≤ 0.05, inte
 .github/workflows/ci.yml   CI on pull requests: install, typecheck, lint, build, unit, e2e, size
 Blender Assets/            owner's Blender work – git-ignored, read-only, never delete (D-22)
 docs/                      README (index), architecture, assets, licences
-e2e/                       Playwright browser smoke tests
-scripts/                   size-report, review-shots, lighthouse; lib/prod-server (free-port next start)
+e2e/                       Playwright browser smoke tests (smoke.spec.ts, shell.spec.ts)
+scripts/                   fetch-fonts (build-time font download), size-report, review-shots, lighthouse; lib/prod-server (free-port next start)
 scripts/review/targets.mjs named capture targets and viewports for review:shots
-src/app/                   App Router: layout.tsx, page.tsx, robots.ts, globals.css (Tailwind + tokens); *.test.tsx beside the code
+src/app/                   App Router: layout.tsx, page.tsx, robots.ts, globals.css (Tailwind + design tokens); *.test.tsx beside the code
+src/app/dev/               dev-only pages (page.dev.tsx) – built only with ENABLE_DEV_PAGES=1
+src/components/ui/         Button, Link, Chip/ChipGroup, Panel, StatusChip, SectionHeading
+src/components/layout/     SiteShell, header, nav + mobile menu, Simple-view switch, footer, skip link, Container
 src/config/site.ts         launch switch (SITE_LAUNCHED)
+src/content/site.ts        site metadata, navigation, footer, about text (BRIEF §8)
+src/fonts/                 font pairings (pairing-a/b/c/d.ts); index.ts picks the active one; vendor/ = build-time downloads (git-ignored)
+src/lib/                   contrast maths, token parser, simple-view store + hook
+src/styles/                contrast pairs; contrast and tokens-only tests
 budgets.config.mjs         budget limits used by the size report and Lighthouse (STANDARDS §3)
 playwright.config.ts       Playwright: desktop + phone projects, production webServer
 vitest.config.mts          Vitest: jsdom, React plugin, @/* alias; vitest.setup.ts adds jest-dom
@@ -208,7 +244,7 @@ vitest.config.mts          Vitest: jsdom, React plugin, @/* alias; vitest.setup.
 CLAUDE.md                  this file
 CONTENT-LICENSE.md         content, media, models, resume: all rights reserved
 LICENSE                    MIT, source code only
-next.config.ts             Next.js config, X-Robots-Tag header
+next.config.ts             Next.js config, X-Robots-Tag header, dev-page flag (pageExtensions)
 ```
 
 Docs to update in the same PR as the change: this file, the affected `docs/` files, every new asset in `docs/assets.md`, every third-party thing in `docs/licences.md`.

@@ -1,7 +1,7 @@
 // Lighthouse: npm run lighthouse -- [routes…]   (default "/"; local only, not in CI)
 //
-// Builds the site (the npm script runs `next build` first), serves it with `next start` on a
-// free port, and runs Lighthouse CI (`lhci collect`) with the mobile config (Lighthouse's
+// Builds the site (the npm script runs `npm run build` first: font download, then `next build`),
+// serves it with `next start` on a free port, and runs Lighthouse CI (`lhci collect`) with the mobile config (Lighthouse's
 // default: phone emulation, simulated slow 4G and CPU slowdown) in Playwright's Chromium,
 // 3 runs per route. It prints the median of each category score and gates it against
 // budgets.config.mjs (STANDARDS.md §3).

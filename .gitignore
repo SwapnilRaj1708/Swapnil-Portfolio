@@ -30,5 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Fonts downloaded at build time (scripts/fetch-fonts.mjs) – their licence forbids committing them
+/src/fonts/vendor/
+
 # Blender work folder – never committed (D-22)
 /Blender Assets/
