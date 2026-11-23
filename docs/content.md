@@ -14,6 +14,7 @@ Every word about the owner lives in typed data under `src/content/data/`, checke
 | `src/content/data/contact-flow.ts` | the contact flow's questions and options (BRIEF §6, §8) and each intent's `draft` message | the contact flow in `#contact` on `/`; the email to the owner |
 | `src/content/data/site.ts` | `site`: navigation, copyright, resume PDF path, page titles and descriptions · `homeSections`: chapter → section id, index label, heading | every page |
 | `src/content/data/ui.ts` | interface words: headings, button and link labels (no facts about the owner) | every page |
+| `src/content/data/stills.ts` | `stills`: one Blender still per chapter in two crops (`wide`, `portrait`: file, width, height) · `socialImage`: the social images' background (PF-028) | hero and section banners on `/`; social images |
 | `src/content/schema.ts` | the zod schemas: what each field must be | – |
 | `src/content/index.ts` | parses everything once and exports it (`identity`, `projects`, `featuredProjects`, `getProject()` …) | – |
 
@@ -69,6 +70,20 @@ Each image is a `media` entry: `src` (a file under `public/media/projects/<slug>
 2. Put it in `public/media/projects/<slug>/` (any lower-case file name, e.g. `dashboard.webp`). Delete the stand-in file if it is no longer used.
 3. Update the entry: `src`, `alt`, the real `width` and `height`, `provisional: false`, and `source` (e.g. "owner, 2026-12-01").
 4. `npm test` and `npm run build` check that the file exists and the size matches. Add a line to `docs/assets.md` if the asset list asks for it.
+
+## Stills (PF-028)
+
+The home page stands on Blender stills: the Port behind the hero, and one banner per section (Bus → About, Memory Banks → Experience, Render Array → Projects, Core → Skills, Uplink → Contact). Each chapter has a `wide` crop (hero 16:9, banners 21:9) and a `portrait` crop (hero 9:16, banners 4:5). The stills are decorative (`alt=""`): they stand in for the 3D scene, which is hidden from assistive technology. So they carry no alt text, and every word on them (index label, heading, hero text) is real text from the content data.
+
+**Replace a still.**
+
+1. Render the new still in Blender and approve it (the asset flow, WORKFLOW §4a). It goes in `Blender Assets/stills/` under the same name.
+2. Run `npm run media:stills`. It writes `public/media/stills/still-s1-<chapter>-<crop>.webp` and stops without writing anything if a source has the wrong size or a served variant would exceed 250 KB.
+3. If the size changed, update `width` and `height` in `src/content/data/stills.ts`. `next build` checks them against the file.
+4. Run `npm test`. `still-contrast.test.ts` samples the new still under its text area with the scrim and fails below 4.5:1. If it fails, change the scrim in `src/styles/stills.ts` (or the render), not the threshold.
+5. Run `npm run size` and update the row in `docs/assets.md`.
+
+**Social images.** Every page's social card is drawn at build from `socialImage` (the `still-social` render), plus the page's name (Work, Resume; none on the home page) and `identity.name` and `identity.role`. Its alt text is "name, role". Change the words in the content and the cards follow.
 
 ## Edit other content
 

@@ -31,7 +31,17 @@ export const budgets = {
     reportOnly: ["/"],
   },
 
+  // `npm run size`: the stage 1 stills (PF-028, item table: ≤ 250 KB each at the largest size
+  // served). They are drawn full-bleed, so the largest size is the master's full width (next/image
+  // never enlarges); measured as served by next/image, in AVIF and in WebP.
+  stills: {
+    dir: "public/media/stills",
+    maxServedBytes: 250 * KB,
+  },
+
   // `npm run lighthouse`: mobile scores (0–100), median of 3 runs, fast-lane pages.
+  // With `-- --applied` (real slow 4G and 4× CPU instead of the simulation) LCP is also gated:
+  // D-32 – on routes whose LCP is an image, LCP ≤ 2.5 s is checked with applied throttling.
   lighthouse: {
     runs: 3,
     minScores: {
@@ -40,5 +50,8 @@ export const budgets = {
       "best-practices": 95,
       seo: 95,
     },
+    /** Page experience (STANDARDS.md §3): CLS always; LCP gated in the applied-throttling run. */
+    maxCls: 0.05,
+    maxLcpMs: 2500,
   },
 };

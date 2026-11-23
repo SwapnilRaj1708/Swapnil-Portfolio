@@ -12,7 +12,9 @@ All are prerendered at build (Cache Components on) and readable with JavaScript 
 
 | Route | File | What |
 |---|---|---|
-| `/` | `src/app/page.tsx` | The journey's content as designed static sections, in chapter order (BRIEF §3, D-24): Hero `#top`, About `#about`, Experience `#experience`, Projects `#work` (the featured projects, each linking to its case study), Skills `#skills`, Services and Contact `#contact`. Sections live in `src/components/sections/`; each is tagged `data-chapter="<chapter>"`. This is what the static tier shows; the 3D journey draws behind the same DOM. |
+| `/` | `src/app/page.tsx` | The journey's content as designed static sections, in chapter order (BRIEF §3, D-24): Hero `#top`, About `#about`, Experience `#experience`, Projects `#work` (the featured projects, each linking to its case study), Skills `#skills`, Services and Contact `#contact`. Sections live in `src/components/sections/`; each is tagged `data-chapter="<chapter>"`. Since PF-028 the hero stands on the Port still and every other section opens on its chapter's still (see "Static tier: the stage 1 home" in §2). This is what the static tier shows; the 3D journey draws behind the same DOM. |
+| Social images | `src/app/opengraph-image.tsx`, `src/app/work/opengraph-image.tsx`, `src/app/resume/opengraph-image.tsx` | 1200 × 630 PNGs drawn at build by next/og (PF-028), see "Social images, icons, manifest" below |
+| Icons, manifest | `src/app/favicon.ico`, `icon1.png`, `icon2.png`, `apple-icon.png`, `manifest.ts` | Next's icon and manifest file conventions (PF-028) |
 | `/work` | `src/app/work/page.tsx` | Every project, featured first, then "More projects", each with role and stack |
 | `/work/<slug>` | `src/app/work/[slug]/page.tsx` | Case study: role, org and year, stack, links, image, then Problem, Approach and Outcome; previous and next project. `generateStaticParams` returns every project. `ensureStatic = "navigation"` keeps the route fully static, and makes an unknown slug render completely before anything is sent, so `notFound()` answers 404 rather than streaming a 200 fallback shell. |
 | `/resume` | `src/app/resume/page.tsx` | Experience, education, skills; download of `public/resume/swapnil-raj-resume.pdf` (the owner's own PDF, D-27) |
@@ -22,7 +24,23 @@ All are prerendered at build (Cache Components on) and readable with JavaScript 
 
 Each page takes its title and description from the content (`site.meta`, or the project's `name` and `oneLine`), through the root layout's `titleTemplate`. No child segment sets `robots`, so the launch switch stays in charge. Images use `next/image` with `sizes` per layout (measured, in `src/components/projects/image-sizes.ts`, so phones fetch the smallest sharp file) and the intrinsic `width`/`height` from the content, so no layout shift. Formats: AVIF, else WebP, quality 75 (`next.config.ts`). The first image on `/work` and the case-study image load eagerly at high priority; the rest are lazy. All three fonts stay preloaded: each is on every page's first screen, and dropping the preloads (tested in PF-006) brought no LCP gain and a small font-swap layout shift (CLS 0.003–0.004).
 
-**Lighthouse and `/work`.** On phones the LCP of `/work` is the first card's screenshot. Lighthouse's simulated throttling (Lantern) counts every script that ran before an image LCP as blocking it, so the simulated LCP there is about the time to download and run the shell's JavaScript on slow 4G (≈ 3.1–3.4 s), even though the image paints together with the first paint. With applied throttling (`--throttling-method=devtools`: real slow 4G and 4× CPU) the same page measures ≈ 2.0–2.4 s. Text-LCP routes (`/`, case studies) are not affected (≈ 0.77 s simulated).
+**Lighthouse and `/work`.** On phones the LCP of `/work` is the first card's screenshot. Lighthouse's simulated throttling (Lantern) counts every script that ran before an image LCP as blocking it, so the simulated LCP there is about the time to download and run the shell's JavaScript on slow 4G (≈ 3.1–3.4 s), even though the image paints together with the first paint. With applied throttling (`--throttling-method=devtools`: real slow 4G and 4× CPU) the same page measures ≈ 2.0–2.4 s. Case studies are text-LCP routes and are not affected (≈ 0.77 s simulated). Since PF-028 `/` is an image-LCP route too: its LCP is the hero still, so D-32 applies there as well. `npm run lighthouse -- / --applied` runs the applied-throttling measurement and gates LCP ≤ 2.5 s.
+
+**Social images, icons, manifest (PF-028).** The root layout sets only the shared social metadata: `openGraph: { type: "website", siteName }` and `twitter: { card: "summary_large_image" }`. Next fills `og:title`, `og:description` and the `twitter:*` text from each page's own title and description, and `og:image` and `twitter:image` from the nearest `opengraph-image` file. For that reason pages must not set `openGraph` or `twitter` themselves: metadata merges shallowly, so a page's value would replace the layout's and drop the image. The images are `src/lib/social-image.tsx` (next/og `ImageResponse`). Each draws the `still-social` render, the page label (Work, Resume; none on `/`), and the name and role from the content, in Inter Medium.
+
+- Satoshi cannot be used: its build-time download is WOFF2, and next/og reads only TTF, OTF and WOFF. `scripts/fetch-fonts.mjs` therefore also downloads Inter's TTF from Google Fonts, pinned by SHA-256.
+- The font and the JPEG are read at module scope, as the installed docs advise. With Cache Components, a file read inside the handler counts as uncached I/O while prerendering, and it turned an image route dynamic in testing.
+- Case studies, the 404 page and the contact result pages use their section's image or the home page's. A per-project image was tried: `/work/[slug]/opengraph-image` prerendered only one of the eight slugs under Cache Components, and the others would have rendered at request time without the build-time font.
+- No `metadataBase` yet. On Vercel, Next makes the image URLs absolute with the deployment's own address (preview or production). A local build prints a warning and uses `http://localhost:3000`.
+
+The icons and the manifest follow Next's file conventions in `src/app/`:
+
+- `favicon.ico` holds 16, 32 and 48 px images.
+- `icon1.png` (192 px) and `icon2.png` (512 px) are linked as icons and listed in the manifest.
+- `apple-icon.png` is 180 px.
+- `manifest.ts` gives the name, the short name "Swapnil Raj", and `#07090C` as theme and background colour.
+
+The root layout's `viewport.themeColor` is the same colour. These places cannot read CSS variables, so they take the hex values from `src/styles/palette.ts`. `palette.test.ts` keeps that file equal to the tokens in `globals.css`.
 
 ### One persistent canvas
 _To be filled in._
@@ -69,7 +87,40 @@ The email: to the public address in `identity.email`, from `CONTACT_EMAIL_FROM` 
 ## 2. Quality tiers and fallbacks
 
 ### Tiers: high, medium, low, static
-_To be filled in._
+_High, medium and low: to be filled in (PF-007)._
+
+### Static tier: the stage 1 home (PF-028)
+The `static` tier is the home page as it is now: no canvas, the same DOM, and Blender stills where the 3D scene will be. It is also the stage 1 launch page (D-26), so none of it is throwaway. The hero stands on the Port still. Every other section opens on a banner of its chapter's still (Bus, Memory Banks, Render Array, Core, Uplink), with the mono index label and the h2 in the banner's bottom-left corner. The stills are encoded by `npm run media:stills` and listed in `docs/assets.md` and `src/content/data/stills.ts`.
+
+**Art direction.** Each still comes in two crops and is drawn with `<picture>`, using the installed Next.js's documented way: `getImageProps()` for each crop, the wide crop as a `<source media>`, the portrait crop on the `<img>` (`src/components/stills/still-picture.tsx`). next/image serves each crop resized per device (AVIF, else WebP, quality 75, `sizes="100vw"`).
+
+| | Wide crop | Portrait crop | Switch |
+|---|---|---|---|
+| Hero (`#top`) | 16:9, 2560 × 1440 | 9:16, 1080 × 1920 | `(orientation: landscape)`; the layout uses Tailwind's `landscape:` / `portrait:` |
+| Banners | 21:9, 2560 × 1080, in a 21:9 box | 4:5, 1080 × 1350, in a 4:5 box | `(min-width: 48rem)` = Tailwind `md` |
+
+The stills are decorative (`alt=""`), like the canvas they stand in for. A sized image that fails still gets a broken-image frame and icon in Chromium, even with an empty alt. Browsers generate an image's `::after` only when it failed, so each still `<img>` carries an `::after` panel in the background colour. A failed still therefore shows the background colour and nothing else; `e2e/stills.spec.ts` checks the pixels of each failed image's corner. The hero image is fetched at once at high priority, because it is the page's largest paint. Every banner is lazy. No layout shift: the hero box is the first screen (`min-h-first-screen`) and each banner box has a fixed aspect ratio (`aspect-banner-narrow`, `md:aspect-banner-wide`). Neither depends on the image. With images off or slow, every section keeps its layout and reads as text on the background colour (`e2e/stills.spec.ts` compares the section heights with and without images).
+
+**Text-safe areas.** The look bible keeps the left 40 % of wide frames and the top 40 % of portrait frames calm (BRIEF §4). In the hero:
+
+- On landscape screens the wide still covers the hero from the content column's left edge to the window's right edge, anchored left (`hero-still-inset`). The copy column (`hero-copy`, `globals.css`) starts there and is 40 % of the image's drawn width, which is the larger of the box width and the first screen's height × 16/9. So it never passes the safe area, whatever the window's shape. Text wraps inside it.
+- On portrait screens name, role, pitch and place sit at the top. The availability chip and the two links stand on their own solid surfaces below the port.
+
+On banners the label and heading stay in the bottom 38 % (wide; bottom 35 % on 4:5) and the left 70 % (wide).
+
+The areas are in `src/styles/stills.ts` (`textArea`). `e2e/stills.spec.ts` maps the text's line boxes through `object-fit: cover` and `object-position` into image fractions at nine window sizes, from 360 × 780 to 2560 × 1440 plus a landscape phone. It requires every text box inside its area and the right crop at each size.
+
+**Scrims.** A scrim is a gradient of the background colour over the image, from transparent to an alpha, defined in `src/styles/stills.ts` and drawn by `src/components/stills/still-scrims.tsx` as `color-mix(in srgb, var(--color-background) N%, transparent)`.
+
+| Still | Scrims |
+|---|---|
+| Bus, Memory, Array, Uplink | bottom 0.72 → 0.62 at 40 % → 0 at 70 %; a top fade 0.75 → 0 at 20 % |
+| Core | the strongest: its amber streets run through the lower band (max luma 194, REPORT-stills run 2). Bottom 0.86 → 0.80 at 45 % → 0 at 80 %; on the wide crop also from the right 0.40 → 0 at 45 %, where the avenue is brightest; the top fade |
+| Port | left 0.60 → 0.45 at 30 % → 0 at 55 % (landscape) or top 0.70 → 0.50 at 30 % → 0 at 55 % (portrait); a bottom fade into the page, 0.85 → 0 at 18 % |
+
+`src/styles/still-contrast.test.ts` proves 4.5:1. For every still and crop it decodes the shipped file, and the same file re-encoded as next/image serves it. It takes every pixel under the text area, lays the scrim over it as the browser blends it (sRGB), and requires each text colour that sits there (the index label's accent-trace and the heading's text; text and text-muted on the hero) to reach 4.5:1 against the brightest result.
+
+The banners' boxes keep the image's proportions (cropped only on the side away from the text), so the test may count their scrim. The hero's box changes shape with the window, so its text must pass on the image alone. It does: 13.8:1 and 5.5:1 at worst, the scrims are extra margin. The social image's text area (left half) is checked the same way.
 
 ### Choosing and lowering the tier
 _To be filled in._

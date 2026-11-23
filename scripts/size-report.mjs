@@ -9,9 +9,11 @@
 // as `next start` serves it) and Brotli (quality 11), and sums them per route.
 // Then the page weight of each fast-lane route (budgets.pageWeight): every byte the page
 // transfers in Chromium (desktop and phone viewports), lazy images included.
-// Exit code 1 if any route is over its limit.
+// Then the stage 1 stills (budgets.stills, PF-028): each master in public/media/stills/ as
+// next/image serves it at the largest size the layout uses, in AVIF and in WebP.
+// Exit code 1 if anything is over its limit.
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { chromium } from "@playwright/test";
@@ -163,12 +165,16 @@ async function main() {
   const weightServer = await startProdServer();
   /** @type {Awaited<ReturnType<typeof measurePageWeights>>} */
   let weights;
+  /** @type {Awaited<ReturnType<typeof measureStills>>} */
+  let stills;
   try {
     weights = await measurePageWeights(weightServer.origin);
+    stills = await measureStills(weightServer.origin);
   } finally {
     await weightServer.stop();
   }
   printPageWeights(weights);
+  printStills(stills);
 
   for (const p of problems) console.error(`ERROR: ${p}`);
   const over = rows.filter((r) => !r.ok);
@@ -177,8 +183,54 @@ async function main() {
   for (const w of heavy) {
     console.error(`OVER BUDGET: ${w.route} (${w.viewport}) transfers ${fmt(w.total)}, limit ${fmt(budgets.pageWeight.bytes)}`);
   }
-  if (over.length || problems.length || heavy.length) process.exit(1);
+  const heavyStills = stills.filter((s) => !s.ok);
+  for (const s of heavyStills) {
+    console.error(`OVER BUDGET: ${s.file} served as ${s.problem ?? `AVIF ${fmt(s.avif)} / WebP ${fmt(s.webp)}`}, limit ${fmt(budgets.stills.maxServedBytes)}`);
+  }
+  if (over.length || problems.length || heavy.length || heavyStills.length) process.exit(1);
   console.log("All routes within budget.");
+}
+
+/**
+ * The stills as next/image serves them at the largest width the layout can ask for (3840, the
+ * largest device size; next/image never enlarges, so this is the master's own width).
+ */
+async function measureStills(origin) {
+  const dir = path.join(ROOT, budgets.stills.dir);
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".webp")).sort();
+  const max = budgets.stills.maxServedBytes;
+  const results = [];
+  for (const file of files) {
+    const src = `/${path.posix.join(budgets.stills.dir.replace(/^public\//, ""), file)}`;
+    const url = new URL(`/_next/image?url=${encodeURIComponent(src)}&w=3840&q=75`, origin);
+    const sizes = {};
+    let problem = null;
+    for (const [format, accept] of [
+      ["avif", "image/avif,image/webp,*/*"],
+      ["webp", "image/webp,*/*"],
+    ]) {
+      const res = await fetch(url, { headers: { accept } });
+      const body = Buffer.from(await res.arrayBuffer());
+      const type = res.headers.get("content-type");
+      if (!res.ok || type !== `image/${format}`) problem = `HTTP ${res.status} ${type} for ${format}`;
+      sizes[format] = body.length;
+    }
+    results.push({ file, avif: sizes.avif, webp: sizes.webp, problem, ok: !problem && sizes.avif <= max && sizes.webp <= max });
+  }
+  return results;
+}
+
+function printStills(stills) {
+  const limit = budgets.stills.maxServedBytes;
+  console.log("Stills as served by next/image at their largest size (PF-028: ≤ 250 KB each)\n");
+  const header = ["Still", "AVIF", "WebP", "Limit", "Result"];
+  const table = stills.map((s) => [s.file, fmt(s.avif), fmt(s.webp), `≤ ${fmt(limit)}`, s.ok ? "ok" : s.problem ? "ERROR" : "OVER"]);
+  const widths = header.map((h, i) => Math.max(h.length, ...table.map((row) => row[i].length)));
+  const line = (cells) => cells.map((c, i) => c.padEnd(widths[i])).join("  ");
+  console.log(line(header));
+  console.log(widths.map((w) => "-".repeat(w)).join("  "));
+  for (const row of table) console.log(line(row));
+  console.log("");
 }
 
 const WEIGHT_VIEWPORTS = [
@@ -216,6 +268,8 @@ async function measurePageWeights(origin) {
               const bytes = s.responseHeadersSize + s.responseBodySize;
               const type = req.resourceType();
               byType[type] = (byType[type] ?? 0) + bytes;
+              // Stage 1 stills (PF-028), also counted under "image".
+              if (decodeURIComponent(req.url()).includes("/media/stills/")) byType.stills = (byType.stills ?? 0) + bytes;
               total += bytes;
               requests += 1;
             }),
@@ -244,11 +298,11 @@ async function measurePageWeights(origin) {
 
 function printPageWeights(weights) {
   const limit = budgets.pageWeight.bytes;
-  const header = ["Route", "Viewport", "Requests", "Total", "document", "script", "stylesheet", "font", "image", "other", "Limit", "Result"];
+  const header = ["Route", "Viewport", "Requests", "Total", "document", "script", "stylesheet", "font", "image", "(stills)", "other", "Limit", "Result"];
   const known = ["document", "script", "stylesheet", "font", "image"];
   const table = weights.map((w) => {
     const other = Object.entries(w.byType)
-      .filter(([type]) => !known.includes(type))
+      .filter(([type]) => !known.includes(type) && type !== "stills")
       .reduce((sum, [, b]) => sum + b, 0);
     return [
       w.route,
@@ -256,6 +310,7 @@ function printPageWeights(weights) {
       String(w.requests),
       fmt(w.total),
       ...known.map((t) => fmt(w.byType[t] ?? 0)),
+      fmt(w.byType.stills ?? 0),
       fmt(other),
       w.gated ? `≤ ${fmt(limit)}` : "report only",
       w.gated ? (w.ok ? "ok" : "OVER") : "–",
@@ -267,7 +322,7 @@ function printPageWeights(weights) {
   console.log(line(header));
   console.log(widths.map((w) => "-".repeat(w)).join("  "));
   for (const row of table) console.log(line(row));
-  console.log("  (\"other\" = prefetches and data requests made by the page)\n");
+  console.log("  (\"(stills)\" = the stage 1 stills, already inside \"image\"; \"other\" = prefetches and data requests made by the page)\n");
 }
 
 main().catch((err) => {

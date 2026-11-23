@@ -13,8 +13,9 @@ import { education as educationData, experience as experienceData, services as s
 import { about as aboutData, identity as identityData } from "./data/identity";
 import { projects as projectsData } from "./data/projects";
 import { homeSections as homeSectionsData, site as siteData } from "./data/site";
+import { socialImage as socialImageData, stills as stillsData } from "./data/stills";
 import { ui as uiData } from "./data/ui";
-import type { HomeSection, Project } from "./schema";
+import type { Chapter, HomeSection, Project, Still } from "./schema";
 import { parseContent, parseUi } from "./validate";
 
 export const content = parseContent({
@@ -28,11 +29,14 @@ export const content = parseContent({
   contactFlow: contactFlowData,
   site: siteData,
   homeSections: homeSectionsData,
+  stills: stillsData,
+  socialImage: socialImageData,
 });
 
 export const ui = parseUi(uiData);
 
-export const { identity, about, experience, education, skills, services, contactFlow, site, homeSections } = content;
+export const { identity, about, experience, education, skills, services, contactFlow, site, homeSections, stills, socialImage } =
+  content;
 
 /** All projects in display order: featured first, then the rest. */
 export const projects: readonly Project[] = [...content.projects].sort((a, b) => a.order - b.order);
@@ -54,4 +58,25 @@ export function getHomeSection(chapter: HomeSection["chapter"]): HomeSection {
   return section;
 }
 
-export type { Content, Education, HomeSection, Media, NavItem, Project, Role, Service, SkillGroup } from "./schema";
+/** The still that opens a chapter's home section (PF-028). */
+export function getStill(chapter: Chapter): Still {
+  const still = stills.find((s) => s.chapter === chapter);
+  if (!still) throw new Error(`No still for chapter "${chapter}"`);
+  return still;
+}
+
+export type {
+  Chapter,
+  Content,
+  Education,
+  HomeSection,
+  Media,
+  NavItem,
+  Project,
+  Role,
+  Service,
+  SkillGroup,
+  SocialImage,
+  Still,
+  StillFile,
+} from "./schema";
