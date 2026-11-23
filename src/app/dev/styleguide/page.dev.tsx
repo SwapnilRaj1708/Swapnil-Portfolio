@@ -11,7 +11,7 @@ import { Link } from "@/components/ui/link";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StatusChip } from "@/components/ui/status-chip";
-import { site } from "@/content/site";
+import { about, identity, site } from "@/content";
 import { contrastRatio } from "@/lib/contrast";
 import { parseColorTokens } from "@/lib/design-tokens";
 import { CONTRAST_PAIRS, MIN_RATIO } from "@/styles/contrast-pairs";
@@ -150,7 +150,7 @@ export default function StyleguidePage() {
                 text-{step} · {themeValues("text").find(([n]) => n === step)?.[1]}
               </Caption>
               <p className={`${TYPE_CLASS[step]} ${step === "display" || step.endsWith("xl") ? "font-heading font-medium" : ""}`}>
-                {step === "display" || step === "3xl" ? site.name : site.pitch}
+                {step === "display" || step === "3xl" ? identity.name : identity.pitch}
               </p>
             </li>
           ))}
@@ -234,7 +234,7 @@ export default function StyleguidePage() {
           <div className="flex flex-col gap-2">
             <Caption>inline</Caption>
             <p className="max-w-prose">
-              {site.about[0]} <Link href={`mailto:${site.email}`}>{site.email}</Link>
+              {about.beats[0]} <Link href={`mailto:${identity.email}`}>{identity.email}</Link>
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -251,11 +251,11 @@ export default function StyleguidePage() {
           <div className="flex flex-col gap-2">
             <Caption>external</Caption>
             <div className="flex flex-wrap gap-6">
-              <Link href={site.links.github.href} variant="external">
-                {site.links.github.label}
+              <Link href={identity.links.github.href} variant="external">
+                {identity.links.github.label}
               </Link>
-              <Link href={site.links.linkedin.href} variant="external">
-                {site.links.linkedin.label}
+              <Link href={identity.links.linkedin.href} variant="external">
+                {identity.links.linkedin.label}
               </Link>
             </div>
           </div>
@@ -305,16 +305,16 @@ export default function StyleguidePage() {
       <Block index={7} label="Surfaces" title="Panel, status chip, switch">
         <div className="grid gap-6 md:grid-cols-2">
           <Panel label="CH.01 · The Port">
-            <p className="text-text">{site.pitch}</p>
+            <p className="text-text">{identity.pitch}</p>
           </Panel>
           <Panel tone="raised" label="Status · Online">
-            <p className="text-text-muted">{site.about[2]}</p>
+            <p className="text-text-muted">{about.beats[2]}</p>
           </Panel>
         </div>
         <div className="flex flex-col gap-3">
           <Caption>Status chip</Caption>
           <div>
-            <StatusChip>{site.availability}</StatusChip>
+            <StatusChip>{identity.availability}</StatusChip>
           </div>
         </div>
         <div className="flex flex-col gap-3">

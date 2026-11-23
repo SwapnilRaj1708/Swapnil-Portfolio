@@ -30,6 +30,7 @@
   --color-signal-soft: color-mix(in srgb, var(--color-accent-signal) 14%, var(--color-surface));
   --color-signal-line: color-mix(in srgb, var(--color-accent-signal) 45%, var(--color-background));
   --color-trace-hover: color-mix(in srgb, var(--color-accent-trace) 82%, var(--color-text));
+  --color-signal-glow: color-mix(in srgb, var(--color-accent-signal) 55%, var(--color-surface));
 
   /* Timing (BRIEF.md §4 Motion: signals, not bounces – linear travel with a soft ease-out) */
   --transition-duration-instant: 120ms;
@@ -42,15 +43,21 @@
   --default-transition-duration: var(--transition-duration-fast);
   --default-transition-timing-function: var(--ease-signal);
 
-  /* Ambient loop for the status dot: an opacity ramp, never a flash (STANDARDS.md §4). */
+  /*
+   * Ambient loop for the status dot: a soft ring that grows out of the dot and fades – a slow
+   * ramp, never a flash (STANDARDS.md §4). Under reduced motion it stops and the ring stays
+   * hidden (its resting opacity is 0); the dot itself never blinks.
+   */
   --animate-signal-pulse: signal-pulse 2.4s var(--ease-signal) infinite;
   @keyframes signal-pulse {
-    0%,
-    100% {
-      opacity: 1;
+    0% {
+      opacity: 0.55;
+      transform: scale(1);
     }
-    50% {
-      opacity: 0.6;
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(2.6);
     }
   }
 
@@ -59,9 +66,9 @@
   --radius-xs: 2px;
   --radius-sm: 4px;
 
-  /* Shadows: the only one is the status dot's halo. */
+  /* Shadows: the only one is the status dot's glow (a lit signal, not a grey ring). */
   --shadow-*: initial;
-  --shadow-signal-halo: 0 0 0 3px var(--color-signal-soft);
+  --shadow-signal-halo: 0 0 6px 1px var(--color-signal-glow);
 
   /* Spacing: Tailwind's numeric scale is 4 px based (p-1 = 4px, p-4 = 16px). Named layout steps: */
   --spacing: 0.25rem;
@@ -69,6 +76,17 @@
   --spacing-header: 4rem;
   --spacing-section: clamp(4rem, 2.5rem + 6vw, 8rem);
   --spacing-tap: 2.75rem; /* 44 px minimum touch target */
+
+  /*
+   * Project screens (the display frame round every project screenshot and readout tile):
+   * a fixed 16:10 screen, and how bright a screenshot is at rest inside a card (1 = full).
+   * A case study without media shows its readout tile as a short band instead of a full screen:
+   * 240 px on desktop, shorter with the viewport (144 px floor on phones). A spacing token, so
+   * `min-h-readout-band` exists; a minimum, so larger text or zoom grows it instead of clipping.
+   */
+  --aspect-screen: 16 / 10;
+  --screen-dim: 0.78;
+  --spacing-readout-band: clamp(9rem, 6rem + 10vw, 15rem);
 
   /* Content widths */
   --container-content: 80rem;
@@ -127,6 +145,17 @@
   line-height: var(--text-label--line-height);
   letter-spacing: var(--text-label--letter-spacing);
   text-transform: uppercase;
+}
+
+/*
+ * A project screenshot at rest: slightly dimmed (lifted with `filter-none` on hover / focus).
+ * Only where the device can hover with a fine pointer: on touch screens there is no hover to
+ * lift it, so the screenshot stays at full brightness.
+ */
+@utility screen-dim {
+  @media (hover: hover) and (pointer: fine) {
+    filter: brightness(var(--screen-dim));
+  }
 }
 
 /* First screen of a page, below the sticky header. */

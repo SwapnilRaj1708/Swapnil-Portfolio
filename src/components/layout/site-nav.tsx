@@ -4,7 +4,7 @@ import { clsx } from "clsx";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "@/components/ui/link";
-import type { NavItem } from "@/content/site";
+import type { NavItem } from "@/content/schema";
 import { SimpleViewSwitch } from "./simple-view-switch";
 
 /**
@@ -42,8 +42,21 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
     };
   }, [open, close]);
 
+  const quickItems = items.filter((item) => item.quick);
+
   return (
-    <nav aria-label="Main" className="flex items-center">
+    <nav aria-label="Main" className="flex items-center gap-1 sm:gap-3">
+      {/* Below lg: the `quick` links (Work, Resume) stay in the header, one tap away from every
+          page (BRIEF.md §2); the rest sit behind the menu button. */}
+      <ul data-quick-links className="flex items-center gap-3 sm:gap-5 lg:hidden noscript:hidden">
+        {quickItems.map((item) => (
+          <li key={item.href}>
+            <Link href={item.href} variant="nav" current={pathname === item.href}>
+              {item.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
       <button
         ref={buttonRef}
         type="button"
@@ -52,7 +65,7 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
         onClick={() => setOpen((v) => !v)}
         className="label-mono inline-flex min-h-tap items-center gap-2 px-2 text-text transition-colors duration-fast ease-signal hover:text-accent-signal lg:hidden noscript:hidden"
       >
-        <span aria-hidden="true" className="relative h-3 w-4">
+        <span aria-hidden="true" className="relative h-3 w-4 shrink-0">
           <span
             className={clsx(
               "absolute inset-x-0 top-1/2 h-px bg-current transition-transform duration-fast ease-signal",
@@ -66,7 +79,8 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
             )}
           />
         </span>
-        Menu
+        {/* On the narrowest screens only the icon shows; the name stays "Menu" for everyone. */}
+        <span className="max-sm:sr-only">Menu</span>
       </button>
 
       <div
@@ -84,7 +98,8 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
       >
         <ul className="flex flex-col lg:flex-row lg:items-center lg:gap-6 noscript:flex-row noscript:flex-wrap noscript:gap-x-4">
           {items.map((item) => (
-            <li key={item.href}>
+            // Quick links are already in the header below lg: shown in this list from lg up only.
+            <li key={item.href} className={clsx(item.quick && "hidden lg:block noscript:block")}>
               <Link
                 href={item.href}
                 variant="nav"

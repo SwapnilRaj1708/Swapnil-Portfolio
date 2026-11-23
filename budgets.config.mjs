@@ -14,7 +14,20 @@ export const budgets = {
 
   // Dynamic routes cannot be fetched without a real path. Give each one sample paths here,
   // e.g. { "/work/[slug]": ["/work/example"] }. A dynamic route without samples fails the report.
-  dynamicRouteSamples: {},
+  dynamicRouteSamples: {
+    // One case study with an image, one without.
+    "/work/[slug]": ["/work/twizzr", "/work/softboard-lite"],
+  },
+
+  // `npm run size`: total transfer of a fast-lane page without video (STANDARDS.md §3: ≤ 1 MB) –
+  // every request the page makes in a browser (HTML, JS, CSS, fonts, images, prefetches) after
+  // scrolling to the bottom so lazy images load, on the desktop and the phone viewport.
+  pageWeight: {
+    bytes: 1000 * KB,
+    routes: ["/work", "/work/twizzr", "/resume"],
+    // Measured and printed, not gated: the home page is the journey route (its 3D budgets apply).
+    reportOnly: ["/"],
+  },
 
   // `npm run lighthouse`: mobile scores (0–100), median of 3 runs, fast-lane pages.
   lighthouse: {

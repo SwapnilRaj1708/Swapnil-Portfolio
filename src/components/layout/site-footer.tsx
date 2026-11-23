@@ -1,5 +1,5 @@
 import { Link } from "@/components/ui/link";
-import { site } from "@/content/site";
+import { identity, site } from "@/content";
 import { Container } from "./container";
 
 /** Footer: public email, profile links, copyright (BRIEF.md §8). */
@@ -10,18 +10,18 @@ export function SiteFooter() {
         <address className="not-italic">
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
             <li>
-              <Link href={`mailto:${site.email}`} className="break-all">
-                {site.email}
+              <Link href={`mailto:${identity.email}`} className="break-all">
+                {identity.email}
               </Link>
             </li>
             <li>
-              <Link href={site.links.github.href} variant="external">
-                {site.links.github.label}
+              <Link href={identity.links.github.href} variant="external">
+                {identity.links.github.label}
               </Link>
             </li>
             <li>
-              <Link href={site.links.linkedin.href} variant="external">
-                {site.links.linkedin.label}
+              <Link href={identity.links.linkedin.href} variant="external">
+                {identity.links.linkedin.label}
               </Link>
             </li>
           </ul>

@@ -7,7 +7,8 @@
 // reports, so a review can tell a software renderer (SwiftShader) from a real GPU.
 //
 // --headed     runs a visible browser window, which normally gets the real GPU.
-// --full-page  captures the whole scrollable page instead of the first screen.
+// --full-page  captures the whole scrollable page instead of the first screen (it scrolls through
+//              the page first, so lazy-loaded images are in the picture).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -48,6 +49,18 @@ async function capture(page, outDir, file, fullPage, vp) {
     await page.screenshot({ path: path.join(outDir, file) });
     return [file];
   }
+  // Scroll through the page first so lazy-loaded images below the fold load, then go back up.
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.documentElement.scrollHeight; y += Math.round(window.innerHeight * 0.75)) {
+      window.scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    window.scrollTo(0, 0);
+  });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() =>
+    Promise.all([...document.images].filter((img) => !img.complete).map((img) => new Promise((r) => (img.onload = img.onerror = r)))),
+  );
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   const partHeight = Math.floor(MAX_CAPTURE_DEVICE_PX / vp.deviceScaleFactor);
   if (height <= partHeight) {

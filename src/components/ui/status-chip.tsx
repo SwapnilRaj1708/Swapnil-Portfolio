@@ -1,12 +1,15 @@
 import { clsx } from "clsx";
 
 export type StatusChipProps = {
-  /** The availability text (BRIEF.md §8), from the content file. */
+  /** The availability text (BRIEF.md §8), from the content data. */
   children: string;
   className?: string;
 };
 
-/** Availability readout: a softly pulsing signal dot and the status text. */
+/**
+ * Availability readout: a lit signal dot and the status text. A soft ring pulses out of the dot
+ * (an ambient loop); with reduced motion the ring is not shown and the dot stays steady.
+ */
 export function StatusChip({ children, className }: StatusChipProps) {
   return (
     <p
@@ -15,10 +18,13 @@ export function StatusChip({ children, className }: StatusChipProps) {
         className,
       )}
     >
-      <span
-        aria-hidden="true"
-        className="size-2 shrink-0 rounded-full bg-accent-signal shadow-signal-halo animate-signal-pulse"
-      />
+      <span aria-hidden="true" data-status-dot className="relative grid size-2 shrink-0 place-items-center">
+        <span
+          data-status-pulse
+          className="absolute inset-0 rounded-full bg-accent-signal opacity-0 animate-signal-pulse"
+        />
+        <span className="relative size-2 rounded-full bg-accent-signal shadow-signal-halo" />
+      </span>
       <span>{children}</span>
     </p>
   );

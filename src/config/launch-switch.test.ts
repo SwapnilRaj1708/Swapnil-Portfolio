@@ -1,3 +1,4 @@
+import { PHASE_PRODUCTION_SERVER } from "next/constants";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The launch switch (src/config/site.ts) drives three things. These tests replace the
@@ -9,12 +10,13 @@ async function withSwitch(launched: boolean) {
     SITE_LAUNCHED: launched,
     NOINDEX_DIRECTIVE: "noindex, nofollow",
   }));
-  const [{ metadata }, { default: robots }, { default: nextConfig }] = await Promise.all([
+  const [{ metadata }, { default: robots }, { default: config }] = await Promise.all([
     import("@/app/layout"),
     import("@/app/robots"),
     import("../../next.config"),
   ]);
-  return { metadata, robots, nextConfig };
+  // next.config exports a function of the phase; the server phase skips the build-time file check.
+  return { metadata, robots, nextConfig: config(PHASE_PRODUCTION_SERVER) };
 }
 
 afterEach(() => {

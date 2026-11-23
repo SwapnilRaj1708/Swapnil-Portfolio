@@ -7,11 +7,14 @@
 // <link rel="preload|modulepreload" as="script">; `nomodule` polyfills are skipped because
 // modern browsers never load them), compresses each file with gzip (zlib default level,
 // as `next start` serves it) and Brotli (quality 11), and sums them per route.
+// Then the page weight of each fast-lane route (budgets.pageWeight): every byte the page
+// transfers in Chromium (desktop and phone viewports), lazy images included.
 // Exit code 1 if any route is over its limit.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+import { chromium } from "@playwright/test";
 import { budgets, KB } from "../budgets.config.mjs";
 import { ROOT, startProdServer } from "./lib/prod-server.mjs";
 
@@ -157,11 +160,114 @@ async function main() {
   }
   if (polyfills.size) console.log("");
 
+  const weightServer = await startProdServer();
+  /** @type {Awaited<ReturnType<typeof measurePageWeights>>} */
+  let weights;
+  try {
+    weights = await measurePageWeights(weightServer.origin);
+  } finally {
+    await weightServer.stop();
+  }
+  printPageWeights(weights);
+
   for (const p of problems) console.error(`ERROR: ${p}`);
   const over = rows.filter((r) => !r.ok);
   for (const r of over) console.error(`OVER BUDGET: ${r.label} is ${fmt(r.gzip)} gzip, limit ${fmt(limit)}`);
-  if (over.length || problems.length) process.exit(1);
+  const heavy = weights.filter((w) => w.gated && !w.ok);
+  for (const w of heavy) {
+    console.error(`OVER BUDGET: ${w.route} (${w.viewport}) transfers ${fmt(w.total)}, limit ${fmt(budgets.pageWeight.bytes)}`);
+  }
+  if (over.length || problems.length || heavy.length) process.exit(1);
   console.log("All routes within budget.");
+}
+
+const WEIGHT_VIEWPORTS = [
+  { name: "desktop", viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false },
+  { name: "phone", viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+];
+
+/**
+ * Page weight: loads each route in Chromium, scrolls to the bottom so lazy images load, waits
+ * for the network to settle and adds up the bytes on the wire of every response (headers plus
+ * the encoded body, as served: compressed where the server compresses).
+ */
+async function measurePageWeights(origin) {
+  const { routes, reportOnly } = budgets.pageWeight;
+  const browser = await chromium.launch();
+  const results = [];
+  try {
+    for (const route of [...routes, ...reportOnly]) {
+      for (const vp of WEIGHT_VIEWPORTS) {
+        const context = await browser.newContext({
+          viewport: vp.viewport,
+          deviceScaleFactor: vp.deviceScaleFactor,
+          isMobile: vp.isMobile,
+          hasTouch: vp.hasTouch,
+        });
+        const page = await context.newPage();
+        /** @type {Record<string, number>} */
+        const byType = {};
+        let total = 0;
+        let requests = 0;
+        const pending = [];
+        page.on("requestfinished", (req) => {
+          pending.push(
+            req.sizes().then((s) => {
+              const bytes = s.responseHeadersSize + s.responseBodySize;
+              const type = req.resourceType();
+              byType[type] = (byType[type] ?? 0) + bytes;
+              total += bytes;
+              requests += 1;
+            }),
+          );
+        });
+        await page.goto(new URL(route, origin).href, { waitUntil: "load" });
+        await page.evaluate(async () => {
+          for (let y = 0; y <= document.body.scrollHeight; y += Math.round(window.innerHeight * 0.75)) {
+            window.scrollTo(0, y);
+            await new Promise((r) => setTimeout(r, 100));
+          }
+        });
+        await page.waitForLoadState("networkidle");
+        await page.waitForTimeout(300);
+        await Promise.all(pending);
+        await context.close();
+        const gated = routes.includes(route);
+        results.push({ route, viewport: vp.name, total, requests, byType, gated, ok: total <= budgets.pageWeight.bytes });
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  return results;
+}
+
+function printPageWeights(weights) {
+  const limit = budgets.pageWeight.bytes;
+  const header = ["Route", "Viewport", "Requests", "Total", "document", "script", "stylesheet", "font", "image", "other", "Limit", "Result"];
+  const known = ["document", "script", "stylesheet", "font", "image"];
+  const table = weights.map((w) => {
+    const other = Object.entries(w.byType)
+      .filter(([type]) => !known.includes(type))
+      .reduce((sum, [, b]) => sum + b, 0);
+    return [
+      w.route,
+      w.viewport,
+      String(w.requests),
+      fmt(w.total),
+      ...known.map((t) => fmt(w.byType[t] ?? 0)),
+      fmt(other),
+      w.gated ? `≤ ${fmt(limit)}` : "report only",
+      w.gated ? (w.ok ? "ok" : "OVER") : "–",
+    ];
+  });
+  const widths = header.map((h, i) => Math.max(h.length, ...table.map((row) => row[i].length)));
+  const line = (cells) => cells.map((c, i) => c.padEnd(widths[i])).join("  ");
+  console.log("Page weight per fast-lane route (STANDARDS.md §3: ≤ 1 MB without video; bytes on the wire)\n");
+  console.log(line(header));
+  console.log(widths.map((w) => "-".repeat(w)).join("  "));
+  for (const row of table) console.log(line(row));
+  console.log("  (\"other\" = prefetches and data requests made by the page)\n");
 }
 
 main().catch((err) => {

@@ -1,5 +1,5 @@
 import NextLink from "next/link";
-import { site } from "@/content/site";
+import { identity, site } from "@/content";
 import { Container } from "./container";
 import { SiteNav } from "./site-nav";
 
@@ -13,7 +13,7 @@ export function SiteHeader() {
           className="label-mono inline-flex min-h-tap items-center gap-2 text-text transition-colors duration-fast ease-signal hover:text-accent-signal"
         >
           <span aria-hidden="true" className="size-2 shrink-0 bg-accent-trace" />
-          {site.name}
+          {identity.name}
         </NextLink>
         <SiteNav items={site.nav} />
       </Container>

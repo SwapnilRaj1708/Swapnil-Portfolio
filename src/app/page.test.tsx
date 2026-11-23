@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SiteShell } from "@/components/layout/site-shell";
-import { site } from "@/content/site";
+import { featuredProjects, homeSections, identity, services, site } from "@/content";
 import Home from "./page";
 
 function renderHome() {
@@ -24,10 +24,55 @@ describe("home page", () => {
   it("renders the role, the pitch and the availability status", () => {
     renderHome();
     expect(screen.getByText("Full-Stack Engineer")).toBeInTheDocument();
-    expect(
-      screen.getByText("I build fast, real-time web products that people actually use."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Open to full-time roles and freelance projects")).toBeInTheDocument();
+    expect(screen.getByText("I build fast, real-time web products that people actually use.")).toBeInTheDocument();
+    expect(screen.getAllByText("Open to full-time roles and freelance projects").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("has the chapter sections in the owner's order with the BRIEF §3 ids (D-24)", () => {
+    const { container } = renderHome();
+    const ids = [...container.querySelectorAll("main section[data-chapter]")].map((s) => s.id);
+    expect(ids).toEqual(["top", "about", "experience", "work", "skills", "contact"]);
+    expect(homeSections.map((s) => s.sectionId)).toEqual(ids);
+  });
+
+  it("shows the about beats, every role and every skill group", () => {
+    renderHome();
+    expect(screen.getByText(/I like the problems underneath the UI/)).toBeInTheDocument();
+    for (const title of ["Software Development Engineer 2", "Software Development Engineer 1", "Software Development Intern"]) {
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+    }
+    for (const group of ["Frontend", "Backend", "AI", "Tools"]) {
+      expect(screen.getByRole("heading", { name: group })).toBeInTheDocument();
+    }
+  });
+
+  it("lists the five featured projects in order, each linking to its case study", () => {
+    const { container } = renderHome();
+    const work = within(container.querySelector("section#work") as HTMLElement);
+    const links = work.getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("/work/"));
+    expect(links.map((a) => a.textContent)).toEqual(featuredProjects.map((p) => p.name));
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(featuredProjects.map((p) => `/work/${p.slug}`));
+    expect(featuredProjects.map((p) => p.name)).toEqual([
+      "Twizzr",
+      "Softboard Lite",
+      "PG Gurukul",
+      "CREO",
+      "EngineerHUB website",
+    ]);
+  });
+
+  it("shows the services and a direct email link in the contact section", () => {
+    const { container } = renderHome();
+    const contact = within(container.querySelector("section#contact") as HTMLElement);
+    for (const s of services) expect(contact.getByRole("heading", { name: s.title })).toBeInTheDocument();
+    expect(contact.getByRole("link", { name: identity.email })).toHaveAttribute("href", `mailto:${identity.email}`);
+  });
+
+  it("links Work and Resume from the hero (one action away)", () => {
+    const { container } = renderHome();
+    const hero = within(container.querySelector("section#top") as HTMLElement);
+    expect(hero.getByRole("link", { name: "See the work" })).toHaveAttribute("href", "/work");
+    expect(hero.getByRole("link", { name: "Resume" })).toHaveAttribute("href", "/resume");
   });
 
   it("puts the content inside the one main landmark", () => {
@@ -45,20 +90,16 @@ describe("home page", () => {
 
   it("has a footer with the public email, GitHub, LinkedIn and the copyright", () => {
     renderHome();
-    const footer = screen.getByRole("contentinfo");
-    expect(footer).toContainElement(screen.getByRole("link", { name: site.email }));
-    expect(screen.getByRole("link", { name: "raj.swapnil1708@gmail.com" })).toHaveAttribute(
+    const footer = within(screen.getByRole("contentinfo"));
+    expect(footer.getByRole("link", { name: "raj.swapnil1708@gmail.com" })).toHaveAttribute(
       "href",
       "mailto:raj.swapnil1708@gmail.com",
     );
-    expect(screen.getByRole("link", { name: /^GitHub/ })).toHaveAttribute(
-      "href",
-      "https://github.com/SwapnilRaj1708",
-    );
-    expect(screen.getByRole("link", { name: /^LinkedIn/ })).toHaveAttribute(
+    expect(footer.getByRole("link", { name: /^GitHub/ })).toHaveAttribute("href", "https://github.com/SwapnilRaj1708");
+    expect(footer.getByRole("link", { name: /^LinkedIn/ })).toHaveAttribute(
       "href",
       "https://www.linkedin.com/in/swapnilraj1708",
     );
-    expect(footer).toHaveTextContent("© 2026 Swapnil Raj");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent(site.copyright);
   });
 });
