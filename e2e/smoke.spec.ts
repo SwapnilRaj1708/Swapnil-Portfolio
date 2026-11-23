@@ -4,7 +4,14 @@ import { projects } from "../src/content/data/projects";
 
 // Every page route of the site. PF-006 built /work and /resume, so no route is allowed to 404
 // any more (the PF-005 NOT_YET_BUILT allowlist is gone).
-const ROUTES = ["/", "/work", ...projects.map((p) => `/work/${p.slug}`), "/resume"];
+const ROUTES = [
+  "/",
+  "/work",
+  ...projects.map((p) => `/work/${p.slug}`),
+  "/resume",
+  // Result pages of the plain contact form (PF-019).
+  ...["sent", "invalid", "rate-limited", "failed"].map((s) => `/contact/result/${s}`),
+];
 
 test.describe("every route", () => {
   for (const route of ROUTES) {

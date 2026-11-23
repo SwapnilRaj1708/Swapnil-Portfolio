@@ -2,8 +2,14 @@ import type { ContentInput } from "../schema";
 
 /**
  * Options of the "Transmission" contact flow (BRIEF.md §6; options confirmed by the owner in §8,
- * 2026-11-21). Data only – PF-019 builds the flow (one question per screen, Back, auto-advance)
- * and writes the wording of each screen.
+ * 2026-11-21). The flow itself is src/components/contact/ (PF-019); its interface words are in
+ * ui.ts (`transmission`).
+ *
+ * `draft` (PF-019): the message pre-drafted from the visitor's choices, editable before sending.
+ * `{<question id>}` is replaced by the option picked for that question (the budget in the chosen
+ * currency) as it reads in a sentence: its label with the first letter lower-cased ("Full-time" →
+ * "full-time"; amounts such as "₹50k–2L" stay as they are), or its `draftLabel` where that does
+ * not fit – an article ("a website") or an acronym ("ASAP", "an AI feature").
  */
 export const contactFlow = {
   intentQuestion: "What brings you here?",
@@ -11,6 +17,7 @@ export const contactFlow = {
     {
       id: "hiring",
       label: "Hiring for a role",
+      draft: "Hi Swapnil, I'm hiring for a {role} role ({work-mode}) and would like to talk.",
       details: [
         {
           id: "role",
@@ -35,14 +42,15 @@ export const contactFlow = {
     {
       id: "freelance",
       label: "A freelance project",
+      draft: "Hi Swapnil, I have a freelance project in mind: {project}. Budget: {budget}. Timeline: {timeline}.",
       details: [
         {
           id: "project",
           label: "Kind of project",
           options: [
-            { id: "website", label: "Website" },
-            { id: "web-app", label: "Web app" },
-            { id: "ai-feature", label: "AI feature" },
+            { id: "website", label: "Website", draftLabel: "a website" },
+            { id: "web-app", label: "Web app", draftLabel: "a web app" },
+            { id: "ai-feature", label: "AI feature", draftLabel: "an AI feature" },
             { id: "something-else", label: "Something else" },
           ],
         },
@@ -78,7 +86,7 @@ export const contactFlow = {
           id: "timeline",
           label: "Timeline",
           options: [
-            { id: "asap", label: "ASAP" },
+            { id: "asap", label: "ASAP", draftLabel: "ASAP" },
             { id: "1-2-months", label: "1–2 months" },
             { id: "flexible", label: "Flexible" },
           ],
@@ -88,6 +96,7 @@ export const contactFlow = {
     {
       id: "collaboration",
       label: "A collaboration",
+      draft: "Hi Swapnil, I'd like to talk about a collaboration ({kind}).",
       details: [
         {
           id: "kind",
@@ -102,7 +111,7 @@ export const contactFlow = {
       ],
     },
     // "Just saying hello" skips the details step.
-    { id: "hello", label: "Just saying hello", details: [] },
+    { id: "hello", label: "Just saying hello", draft: "Hi Swapnil, just saying hello.", details: [] },
   ],
   fields: ["name", "email", "message"],
 } satisfies ContentInput["contactFlow"];

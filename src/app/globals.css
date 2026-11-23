@@ -61,6 +61,25 @@
     }
   }
 
+  /*
+   * Contact flow (PF-019): the next question slides in from the side it comes from. Under reduced
+   * motion every animation stops (end of this file), so steps simply change.
+   */
+  --animate-step-in: step-in var(--transition-duration-moderate) var(--ease-signal) both;
+  --animate-step-back: step-back var(--transition-duration-moderate) var(--ease-signal) both;
+  @keyframes step-in {
+    from {
+      opacity: 0;
+      transform: translateX(1.5rem);
+    }
+  }
+  @keyframes step-back {
+    from {
+      opacity: 0;
+      transform: translateX(-1.5rem);
+    }
+  }
+
   /* Radii: sharp, like machine readouts. `rounded-none` (0) and `rounded-full` are built in. */
   --radius-*: initial;
   --radius-xs: 2px;
@@ -155,6 +174,18 @@
 @utility screen-dim {
   @media (hover: hover) and (pointer: fine) {
     filter: brightness(var(--screen-dim));
+  }
+}
+
+/*
+ * Contact flow, budget question (PF-019): every option carries its label in each currency
+ * (`data-currency`); only the one matching the checked currency radio is shown. Plain CSS, so the
+ * ₹ / $ toggle also works in the form without JavaScript.
+ */
+@layer components {
+  form:has(input[name="currency"][value="usd"]:checked) [data-currency="inr"],
+  form:has(input[name="currency"][value="inr"]:checked) [data-currency="usd"] {
+    display: none;
   }
 }
 

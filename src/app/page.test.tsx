@@ -68,6 +68,15 @@ describe("home page", () => {
     expect(contact.getByRole("link", { name: identity.email })).toHaveAttribute("href", `mailto:${identity.email}`);
   });
 
+  it("has the contact flow in the contact section: a real form that posts to /api/contact (PF-019)", () => {
+    const { container } = renderHome();
+    const contact = within(container.querySelector("section#contact") as HTMLElement);
+    const form = contact.getByRole("form", { name: "Transmission" });
+    expect(form).toHaveAttribute("action", "/api/contact");
+    expect(form).toHaveAttribute("method", "post");
+    expect(contact.getByRole("group", { name: "What brings you here?" })).toBeInTheDocument();
+  });
+
   it("links Work and Resume from the hero (one action away)", () => {
     const { container } = renderHome();
     const hero = within(container.querySelector("section#top") as HTMLElement);

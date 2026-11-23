@@ -40,7 +40,9 @@ export async function startProdServer() {
   const origin = `http://localhost:${port}`;
   const child = spawn(process.execPath, [NEXT_BIN, "start", "-p", String(port)], {
     cwd: ROOT,
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+    // RESEND_BASE_URL: the contact endpoint's mail client points at a closed local port, so no
+    // check, capture or measurement can deliver an email (PF-019).
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", RESEND_BASE_URL: "http://127.0.0.1:9" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

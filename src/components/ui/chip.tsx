@@ -19,7 +19,8 @@ export function Chip({ type = "radio", className, children, ...input }: ChipProp
   return (
     <label
       className={clsx(
-        "group inline-flex min-h-tap cursor-pointer items-center gap-2 rounded-xs border border-line-strong bg-surface px-4 text-sm text-text",
+        // `relative`: the visually hidden input stays inside its chip (focus scrolls to the chip).
+        "group relative inline-flex min-h-tap cursor-pointer items-center gap-2 rounded-xs border border-line-strong bg-surface px-4 text-sm text-text",
         "transition-colors duration-fast ease-signal hover:border-text-muted",
         "has-[:checked]:border-accent-signal has-[:checked]:bg-signal-soft",
         "has-[:focus-visible]:focus-ring",

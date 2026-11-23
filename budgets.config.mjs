@@ -17,6 +17,8 @@ export const budgets = {
   dynamicRouteSamples: {
     // One case study with an image, one without.
     "/work/[slug]": ["/work/twizzr", "/work/softboard-lite"],
+    // Result pages of the plain contact form (PF-019): all share one template.
+    "/contact/result/[status]": ["/contact/result/sent"],
   },
 
   // `npm run size`: total transfer of a fast-lane page without video (STANDARDS.md §3: ≤ 1 MB) –

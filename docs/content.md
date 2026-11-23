@@ -11,7 +11,7 @@ Every word about the owner lives in typed data under `src/content/data/`, checke
 | `src/content/data/identity.ts` | `identity`: name, role, pitch (≤ 12 words), location, time zone, availability, email, GitHub and LinkedIn · `about`: two or three beats (≤ 120 words, provisional) | hero, header, footer, About, Contact, `/resume` |
 | `src/content/data/career.ts` | `experience` (roles, newest first) · `education` · `skills` (≤ 4 groups of ≤ 6) · `services` (≤ 3) | Experience, Skills and Contact sections on `/`; `/resume` |
 | `src/content/data/projects.ts` | `projects`: every project, featured first | `/` (featured), `/work`, `/work/<slug>` |
-| `src/content/data/contact-flow.ts` | options of the contact flow (BRIEF §6) | PF-019 (not shown yet) |
+| `src/content/data/contact-flow.ts` | the contact flow's questions and options (BRIEF §6, §8) and each intent's `draft` message | the contact flow in `#contact` on `/`; the email to the owner |
 | `src/content/data/site.ts` | `site`: navigation, copyright, resume PDF path, page titles and descriptions · `homeSections`: chapter → section id, index label, heading | every page |
 | `src/content/data/ui.ts` | interface words: headings, button and link labels (no facts about the owner) | every page |
 | `src/content/schema.ts` | the zod schemas: what each field must be | – |
@@ -78,3 +78,15 @@ Each image is a `media` entry: `src` (a file under `public/media/projects/<slug>
 - **Home sections:** `homeSections` maps each journey chapter to its section id (`#top`, `#about`, `#experience`, `#work`, `#skills`, `#contact`, BRIEF §3) and its index label. The order of the sections themselves is in `src/app/page.tsx` (D-24).
 - **Resume PDF:** the owner's file is copied byte for byte from the assets folder (`Blender Assets/content/Swapnil Raj Resume.pdf`) to `public/resume/swapnil-raj-resume.pdf`. To update it, copy the new file over the old one. Never edit it in place.
 - **Interface words:** `src/content/data/ui.ts`.
+
+## Contact flow
+
+The contact flow "Transmission" (PF-019) shows only content-data words:
+
+- **Questions and options:** `src/content/data/contact-flow.ts`. `intentQuestion`; per intent its `label`, its `details` (one screen per question: `label` is the question, `options` its choices; the budget has `currencies` instead, ₹ first by `default: true`, with the same option ids in each currency so a picked tier survives the ₹ / $ toggle), and its `draft`. Options keep the order given; the first nine can be picked with the number keys.
+- **Draft message:** `draft` per intent, e.g. `"Hi Swapnil, I'm hiring for a {role} role ({work-mode}) and would like to talk."` – each `{question id}` becomes the option the visitor picked as it reads in a sentence: by default its label with the first letter lower-cased ("Full-time" → "full-time", so the draft reads "…hiring for a full-time role (remote)…"; amounts such as "₹50k–2L" or "under $600" stay as they are). Where that does not read naturally, give the option a `draftLabel`: an article (`{ id: "website", label: "Website", draftLabel: "a website" }`), an acronym (`"ASAP"`, `"an AI feature"`), other wording. A label that starts with two capitals (an acronym) must have a `draftLabel` – the schema fails the build otherwise. The schema also fails the build if a placeholder is not one of that intent's question ids. `src/lib/contact/flow.test.ts` lists the exact draft for every option of every question (budget per currency) and fails when an option is added without its expected draft – add the line there too. "Just saying hello" has no questions, so its draft has no placeholders. Drafts were written in PF-019 (wording, not facts); the owner may rewrite them freely.
+- **Screens, buttons, errors, states:** `ui.transmission` (progress, stage names, the name/email/message screens, review, privacy line "Your message is emailed to me and not stored on this site.", errors, success and failure, the "Prefer plain email?" line). `{placeholders}` there are filled in by the flow.
+- **The email to the owner:** `ui.transmissionEmail` (subject `[Portfolio] {intent} – {name}`, labels, footer).
+- **Result pages of the plain form (no JavaScript):** `ui.contactResult`; their titles are also the page titles.
+
+Adding an intent or an option needs no component change: add it to the data, run `npm test` (the schema and the flow tests read it) and `npm run build`. Options and intents are checked by id on the server, so a renamed id only affects answers saved in a visitor's open tab (they are dropped on restore).

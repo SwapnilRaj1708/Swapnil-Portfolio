@@ -61,6 +61,27 @@ describe("content schema", () => {
     expect(message).toContain("projects[2].stack");
   });
 
+  it("contact flow: every draft placeholder must be one of the intent's questions (PF-019)", () => {
+    const input = validInput();
+    input.contactFlow.intents[0].draft = "Hi, a {role} role, {salary} please.";
+    const message = errorFor(input);
+    expect(message).toContain("every {placeholder} must be the id of one of this intent's detail questions");
+    expect(message).toContain("contactFlow.intents[0].draft");
+    const missing = validInput() as unknown as { contactFlow: { intents: Record<string, unknown>[] } };
+    delete missing.contactFlow.intents[3].draft;
+    expect(errorFor(missing)).toContain("contactFlow.intents[3].draft");
+  });
+
+  it("contact flow: an option label that starts with an acronym needs a draftLabel (PF-019)", () => {
+    const input = validInput() as unknown as { contactFlow: { intents: { details: { options?: Record<string, unknown>[] }[] }[] } };
+    const timeline = input.contactFlow.intents[1].details[2].options!;
+    expect(timeline[0].label).toBe("ASAP");
+    delete timeline[0].draftLabel;
+    const message = errorFor(input);
+    expect(message).toContain("a label that starts with capitals (an acronym) needs its wording for the drafted message");
+    expect(message).toContain("contactFlow.intents[1].details[2].options[0].draftLabel");
+  });
+
   it("rejects an unknown (misspelt) key", () => {
     const input = validInput() as unknown as { identity: Record<string, unknown> };
     input.identity.pitchh = "typo";
