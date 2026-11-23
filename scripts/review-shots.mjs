@@ -111,6 +111,8 @@ async function main() {
           deviceScaleFactor: vp.deviceScaleFactor,
           isMobile: vp.isMobile,
           hasTouch: vp.hasTouch,
+          // e.g. { javaScriptEnabled: false } for a no-JavaScript capture
+          ...target.contextOptions,
         });
         const page = await context.newPage();
         const url = new URL(target.path, server.origin).href;

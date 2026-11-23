@@ -191,9 +191,23 @@ export const projectsSchema = z
   });
 
 // ---------------------------------------------------------------------------------------------
-// Contact flow options (BRIEF.md §6 and §8) – the flow itself is built in PF-019.
+// Contact flow options (BRIEF.md §6 and §8) – the flow is src/components/contact/ (PF-019).
 
-const optionSchema = z.strictObject({ id: slug, label: text });
+const optionSchema = z
+  .strictObject({
+    id: slug,
+    label: text,
+    /**
+     * How the option reads inside a drafted message (PF-019), where the default – the label with
+     * its first letter lower-cased ("Full-time" → "full-time") – does not fit: an article
+     * ("a website"), an acronym ("ASAP", "an AI feature"), other wording.
+     */
+    draftLabel: text.optional(),
+  })
+  .refine((o) => o.draftLabel !== undefined || !/^\p{Lu}{2}/u.test(o.label), {
+    error: "draftLabel: a label that starts with capitals (an acronym) needs its wording for the drafted message",
+    path: ["draftLabel"],
+  });
 
 export const detailQuestionSchema = z.strictObject({
   id: slug,
@@ -220,14 +234,26 @@ export const contactFlowSchema = z.strictObject({
   intentQuestion: text,
   intents: z
     .array(
-      z.strictObject({
-        id: slug,
-        label: text,
-        /** Detail questions, one screen each; empty = the step is skipped ("Just saying hello"). */
-        details: z.array(detailQuestionSchema),
-      }),
+      z
+        .strictObject({
+          id: slug,
+          label: text,
+          /**
+           * The pre-drafted message (PF-019). `{<question id>}` is replaced by the option picked
+           * for that question as it reads in a sentence (its `draftLabel`, else its label with the
+           * first letter lower-cased); every placeholder must name one of this intent's questions.
+           */
+          draft: text,
+          /** Detail questions, one screen each; empty = the step is skipped ("Just saying hello"). */
+          details: z.array(detailQuestionSchema),
+        })
+        .refine((intent) => [...intent.draft.matchAll(/\{([^}]*)\}/g)].every((m) => intent.details.some((d) => d.id === m[1])), {
+          error: "draft: every {placeholder} must be the id of one of this intent's detail questions",
+          path: ["draft"],
+        }),
     )
-    .min(2),
+    .min(2)
+    .refine((intents) => new Set(intents.map((i) => i.id)).size === intents.length, { error: "intent ids must be unique" }),
   /** Typed fields after the details, in order. */
   fields: z.array(z.enum(["name", "email", "message"])).min(1),
 });
@@ -299,6 +325,8 @@ export type Service = z.infer<typeof serviceSchema>;
 export type Media = z.infer<typeof mediaSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type ContactFlow = z.infer<typeof contactFlowSchema>;
+export type ContactIntent = ContactFlow["intents"][number];
+export type DetailQuestion = z.infer<typeof detailQuestionSchema>;
 export type NavItem = z.infer<typeof navItemSchema>;
 export type Site = z.infer<typeof siteSchema>;
 export type HomeSection = z.infer<typeof homeSectionSchema>;

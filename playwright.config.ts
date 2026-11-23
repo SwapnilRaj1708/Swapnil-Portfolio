@@ -54,6 +54,9 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 180_000,
     stdout: "pipe",
-    env: { NEXT_TELEMETRY_DISABLED: "1" },
+    // RESEND_BASE_URL: the contact endpoint's mail client talks to a closed local port, so no
+    // test can ever deliver an email – even with the owner's key loaded from .env.local (Next
+    // never overrides a variable that is already set). Real sends are mocked in the browser.
+    env: { NEXT_TELEMETRY_DISABLED: "1", RESEND_BASE_URL: "http://127.0.0.1:9" },
   },
 });

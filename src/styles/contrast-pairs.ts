@@ -31,6 +31,9 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { fg: "accent-signal", bg: "background", use: "focus ring on the page", kind: "non-text" },
   { fg: "accent-signal", bg: "surface", use: "focus ring on a panel, selected chip border", kind: "non-text" },
   { fg: "accent-signal", bg: "surface-raised", use: "focus ring on the mobile menu", kind: "non-text" },
+  { fg: "text-muted", bg: "background", use: "contact flow: text field border", kind: "non-text" },
+  { fg: "accent-trace", bg: "background", use: "contact flow: border of a field with an error", kind: "non-text" },
+  { fg: "accent-signal", bg: "surface", use: "contact flow: progress bar, steps done", kind: "non-text" },
 ];
 
 export const MIN_RATIO = { text: 4.5, "non-text": 3 } as const;

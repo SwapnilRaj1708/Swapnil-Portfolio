@@ -23,6 +23,7 @@
  * @property {string} path     Route to open, e.g. "/"
  * @property {(page: import("@playwright/test").Page) => Promise<void>} [prepare]
  * @property {Viewport[]} [viewports]  Overrides VIEWPORTS for this target
+ * @property {import("@playwright/test").BrowserContextOptions} [contextOptions]  e.g. { javaScriptEnabled: false }
  */
 
 /** @type {Viewport[]} */
@@ -54,11 +55,129 @@ export const NAMED_TARGETS = {
       await page.getByRole("link", { name: "About" }).waitFor({ state: "visible" });
     },
   },
+  // Contact flow "Transmission" (PF-019), the Hiring path step by step → contact-<step>-<viewport>.png.
+  "contact-intent": { path: "/", prepare: (page) => contactFlow(page, 0) },
+  "contact-role": { path: "/", prepare: (page) => contactFlow(page, 1) },
+  "contact-mode": { path: "/", prepare: (page) => contactFlow(page, 2) },
+  "contact-you": { path: "/", prepare: (page) => contactFlow(page, 3) },
+  "contact-message": { path: "/", prepare: (page) => contactFlow(page, 4) },
+  "contact-review": { path: "/", prepare: (page) => contactFlow(page, 5) },
+  // Success state: the send is mocked in the browser (never reaches the endpoint).
+  "contact-sent": { path: "/", prepare: (page) => contactFlow(page, 6) },
+  // Freelance budget with the ₹ / $ toggle switched to $.
+  "contact-budget": {
+    path: "/",
+    prepare: async (page) => {
+      await openContactFlow(page);
+      await chooseOption(page, "A freelance project");
+      await page.getByRole("heading", { name: "Kind of project" }).waitFor();
+      await chooseOption(page, "Web app");
+      await page.getByRole("heading", { name: "Budget range" }).waitFor();
+      await chooseOption(page, "$ USD");
+      await settleOnFlow(page);
+    },
+  },
+  // The drafted message on the Freelance path (Website, under ₹50k, 1–2 months).
+  "contact-message-freelance": {
+    path: "/",
+    prepare: async (page) => {
+      await openContactFlow(page);
+      for (const [option, next] of [
+        ["A freelance project", "Kind of project"],
+        ["Website", "Budget range"],
+        ["under ₹50k", "Timeline"],
+        ["1–2 months", "Where can I reply?"],
+      ]) {
+        await chooseOption(page, option);
+        await page.getByRole("heading", { name: next }).waitFor();
+      }
+      await page.getByRole("textbox", { name: "Your name" }).fill("Review Example");
+      await page.getByRole("textbox", { name: "Your email" }).fill("review@example.com");
+      await page.getByRole("button", { name: /Next/ }).click();
+      await page.getByRole("heading", { name: "Your message" }).waitFor();
+      await settleOnFlow(page);
+    },
+  },
+  // The plain form without JavaScript: its top and its end (submit button).
+  "contact-nojs": {
+    path: "/",
+    contextOptions: { javaScriptEnabled: false },
+    prepare: async (page) => {
+      // page.evaluate does not run with JavaScript off; Playwright scrolls through the protocol.
+      await page.locator("#contact form legend").first().scrollIntoViewIfNeeded();
+    },
+  },
+  "contact-nojs-end": {
+    path: "/",
+    contextOptions: { javaScriptEnabled: false },
+    prepare: async (page) => {
+      await page.getByRole("button", { name: "Transmit" }).scrollIntoViewIfNeeded();
+    },
+  },
   // Chapter stops are added by PF-008, for example:
   // "port-start": { path: "/", prepare: async (page) => { /* scroll to the start of `port` */ } },
 };
 
 export const DEFAULT_TARGETS = ["/"];
+
+// ---------------------------------------------------------------------------------------------
+// Contact flow helpers (PF-019)
+
+/** Waits until the flow's script runs (Next is disabled before), then brings it into view. */
+async function openContactFlow(page) {
+  await page.getByRole("button", { name: /Next/ }).waitFor();
+  await page.waitForFunction(() => !document.querySelector("#contact form button[type=submit]")?.disabled);
+}
+
+/** Picks an option by its chip, as a person does. */
+async function chooseOption(page, name) {
+  await page
+    .locator("#contact label")
+    .filter({ has: page.getByRole("radio", { name, exact: true }) })
+    .click();
+}
+
+/** Scrolls the flow's panel to the top of the screen and lets the step animation finish. */
+async function settleOnFlow(page) {
+  await page.evaluate(() => document.querySelector("#contact form")?.closest(".rounded-sm")?.scrollIntoView({ block: "start" }));
+  await page.waitForTimeout(700);
+}
+
+/** Walks the Hiring path to step `upTo` (0 = intent … 5 = review, 6 = sent with the send mocked). */
+async function contactFlow(page, upTo) {
+  await openContactFlow(page);
+  const steps = [
+    async () => {
+      await chooseOption(page, "Hiring for a role");
+      await page.getByRole("heading", { name: "Kind of role" }).waitFor();
+    },
+    async () => {
+      await chooseOption(page, "Full-time");
+      await page.getByRole("heading", { name: "Work mode" }).waitFor();
+    },
+    async () => {
+      await chooseOption(page, "Remote");
+      await page.getByRole("heading", { name: "Where can I reply?" }).waitFor();
+      await page.getByRole("textbox", { name: "Your name" }).fill("Review Example");
+      await page.getByRole("textbox", { name: "Your email" }).fill("review@example.com");
+    },
+    async () => {
+      await page.getByRole("button", { name: /Next/ }).click();
+      await page.getByRole("heading", { name: "Your message" }).waitFor();
+    },
+    async () => {
+      await page.getByRole("button", { name: /Next/ }).click();
+      await page.getByRole("heading", { name: "Ready to transmit?" }).waitFor();
+    },
+    async () => {
+      await page.route("**/api/contact", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
+      await page.getByRole("button", { name: "Transmit" }).click();
+      await page.getByRole("heading", { name: "Transmission received" }).waitFor();
+    },
+  ];
+  for (const step of steps.slice(0, upTo)) await step();
+  await settleOnFlow(page);
+}
 
 /** "/" → "home", "/work/some-project" → "work-some-project". */
 export function routeSlug(route) {
