@@ -7,7 +7,7 @@ import { Container } from "@/components/layout/container";
 import { Button } from "@/components/ui/button";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { site } from "@/content/site";
+import { about, identity } from "@/content";
 import { activePairing, type FontPairing } from "@/fonts";
 import { pairingA } from "@/fonts/pairing-a";
 import { pairingB } from "@/fonts/pairing-b";
@@ -37,16 +37,16 @@ function PairingColumn({ pairing }: { pairing: FontPairing }) {
 
       {/* Hero */}
       <div className="flex flex-col gap-4">
-        <p className="font-heading text-3xl font-medium">{site.name}</p>
-        <p className="label-mono text-text-muted">{site.role}</p>
-        <p className="text-lg">{site.pitch}</p>
+        <p className="font-heading text-3xl font-medium">{identity.name}</p>
+        <p className="label-mono text-text-muted">{identity.role}</p>
+        <p className="text-lg">{identity.pitch}</p>
       </div>
 
       <SectionHeading index={2} label="About" level={3}>
         About
       </SectionHeading>
 
-      <p className="text-base text-text">{site.about[0]}</p>
+      <p className="text-base text-text">{about.beats[0]}</p>
 
       <div className="flex flex-col gap-2 border-l border-accent-trace pl-4">
         <p className="label-mono text-text">CH.01 · The Port</p>

@@ -3,6 +3,7 @@
 | File | What it holds |
 |---|---|
 | [architecture.md](architecture.md) | How the site is built: DOM-first page, the canvas, scroll progress, chapters, quality tiers |
+| [content.md](content.md) | The content model: where each piece of copy lives, how to add a project, replace a provisional image or update the resume PDF |
 | [assets.md](assets.md) | Every 3D asset the site ships: source, triangles, textures, sizes per tier, licence |
 | [licences.md](licences.md) | Every third-party package, font or asset and its licence |
 

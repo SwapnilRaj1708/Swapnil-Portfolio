@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
 const NAV_TARGETS = ["Work", "About", "Experience", "Skills", "Contact", "Resume", "Simple view"];
+// Phones: Work and Resume are quick links in the header (one tap away), before the menu button;
+// the menu holds the rest.
+const PHONE_NAV_TARGETS = ["Work", "Resume", "About", "Experience", "Skills", "Contact", "Simple view"];
 
 type FocusInfo = {
   name: string;
@@ -33,14 +36,16 @@ function readFocus(page: Page): Promise<FocusInfo | null> {
 test.describe("keyboard path through the shell", () => {
   test("Tab from the skip link reaches every nav target and the switch, with focus always visible", async ({
     page,
+    isMobile,
   }) => {
+    const targets = isMobile ? PHONE_NAV_TARGETS : NAV_TARGETS;
     await page.goto("/");
     await page.keyboard.press("Tab");
     const first = await readFocus(page);
     expect(first?.name).toBe("Skip to content");
 
     const reached: string[] = [];
-    for (let i = 0; i < 30 && !NAV_TARGETS.every((t) => reached.includes(t)); i++) {
+    for (let i = 0; i < 30 && !targets.every((t) => reached.includes(t)); i++) {
       const focus = await readFocus(page);
       expect(focus, `step ${i}: something has focus`).not.toBeNull();
       // One focus style everywhere: 2 px solid accent-signal (#cff6ff = rgb(207, 246, 255)).
@@ -57,7 +62,7 @@ test.describe("keyboard path through the shell", () => {
       await page.keyboard.press("Tab");
     }
     // In this order.
-    const order = NAV_TARGETS.map((t) => reached.indexOf(t));
+    const order = targets.map((t) => reached.indexOf(t));
     expect(order.every((idx) => idx >= 0), `reached: ${reached.join(" → ")}`).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
@@ -76,12 +81,12 @@ test.describe("keyboard path through the shell", () => {
     const button = page.getByRole("button", { name: "Menu" });
     await button.click();
     await expect(button).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("link", { name: "Work" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "About" })).toBeVisible();
     await page.keyboard.press("Tab");
     await page.keyboard.press("Escape");
     await expect(button).toHaveAttribute("aria-expanded", "false");
     await expect(button).toBeFocused();
-    await expect(page.getByRole("link", { name: "Work" })).toBeHidden();
+    await expect(page.getByRole("link", { name: "About" })).toBeHidden();
   });
 });
 
@@ -109,7 +114,10 @@ test.describe("layout from 360 to 1920 px", () => {
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
     await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Work" })).toBeHidden();
+    await expect(page.getByRole("link", { name: "About" })).toBeHidden();
+    // Work and Resume stay in the header, one tap away.
+    await expect(page.getByRole("banner").getByRole("link", { name: "Work", exact: true })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("link", { name: "Resume", exact: true })).toBeVisible();
   });
 
   test("1920 px: no horizontal scroll, navigation inline", async ({ page }) => {
@@ -121,7 +129,7 @@ test.describe("layout from 360 to 1920 px", () => {
     }));
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
     for (const name of NAV_TARGETS.slice(0, 6)) {
-      await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name, exact: true })).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Simple view" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Menu" })).toBeHidden();
@@ -134,7 +142,7 @@ test.describe("without JavaScript", () => {
   test("the navigation links are shown and usable", async ({ page }) => {
     await page.goto("/");
     for (const name of NAV_TARGETS.slice(0, 6)) {
-      await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name, exact: true })).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Menu" })).toBeHidden();
   });
@@ -143,11 +151,22 @@ test.describe("without JavaScript", () => {
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("stops the ambient status pulse", async ({ page }) => {
+  test("stops the ambient status pulse and hides its ring; the dot stays lit", async ({ page }) => {
     await page.goto("/");
-    const animation = await page
-      .getByText("Open to full-time roles and freelance projects")
-      .evaluate((el) => getComputedStyle(el.previousElementSibling as Element).animationName);
-    expect(animation).toBe("none");
+    const pulse = page.locator("[data-status-pulse]").first();
+    expect(await pulse.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    expect(await pulse.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+    const dot = await pulse.evaluate((el) => getComputedStyle(el.nextElementSibling as Element).backgroundColor);
+    expect(dot).toBe("rgb(207, 246, 255)");
+  });
+});
+
+test.describe("status chip", () => {
+  test("the dot is the signal accent with a soft pulse", async ({ page }) => {
+    await page.goto("/");
+    const pulse = page.locator("[data-status-pulse]").first();
+    expect(await pulse.evaluate((el) => getComputedStyle(el).animationName)).toBe("signal-pulse");
+    const dot = await pulse.evaluate((el) => getComputedStyle(el.nextElementSibling as Element).backgroundColor);
+    expect(dot).toBe("rgb(207, 246, 255)");
   });
 });

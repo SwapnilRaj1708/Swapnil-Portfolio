@@ -51,7 +51,7 @@ export const NAMED_TARGETS = {
     viewports: [VIEWPORTS[1]],
     prepare: async (page) => {
       await page.getByRole("button", { name: "Menu" }).click();
-      await page.getByRole("link", { name: "Work" }).waitFor({ state: "visible" });
+      await page.getByRole("link", { name: "About" }).waitFor({ state: "visible" });
     },
   },
   // Chapter stops are added by PF-008, for example:

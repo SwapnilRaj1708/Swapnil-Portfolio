@@ -1,16 +1,24 @@
-import { Container } from "@/components/layout/container";
-import { StatusChip } from "@/components/ui/status-chip";
-import { site } from "@/content/site";
+import { AboutSection } from "@/components/sections/about-section";
+import { ContactSection } from "@/components/sections/contact-section";
+import { ExperienceSection } from "@/components/sections/experience-section";
+import { HeroSection } from "@/components/sections/hero-section";
+import { ProjectsSection } from "@/components/sections/projects-section";
+import { SkillsSection } from "@/components/sections/skills-section";
 
+/**
+ * Home: the journey's content as designed static sections, in chapter order (BRIEF.md §3, D-24):
+ * Hero (#top), About, Experience, Projects (#work), Skills, Services and Contact. This is what the
+ * static tier shows; the 3D journey (PF-007 on) draws behind the same DOM.
+ */
 export default function Home() {
   return (
-    <Container grid className="min-h-first-screen content-center py-section">
-      <div className="col-span-full flex flex-col items-start gap-6 lg:col-span-7">
-        <h1 className="font-heading text-display font-medium text-text">{site.name}</h1>
-        <p className="label-mono text-text-muted">{site.role}</p>
-        <p className="max-w-prose text-xl text-text">{site.pitch}</p>
-        <StatusChip className="mt-4">{site.availability}</StatusChip>
-      </div>
-    </Container>
+    <>
+      <HeroSection />
+      <AboutSection />
+      <ExperienceSection />
+      <ProjectsSection />
+      <SkillsSection />
+      <ContactSection />
+    </>
   );
 }
