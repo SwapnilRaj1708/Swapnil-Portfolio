@@ -13,7 +13,7 @@ import { HomeSection } from "./home-section";
 export function ContactSection() {
   return (
     <HomeSection section={getHomeSection("uplink")}>
-      <div className="col-span-full flex flex-col gap-section lg:col-span-8 lg:col-start-5">
+      <div className="col-span-full flex flex-col gap-section lg:col-span-10">
         <div className="flex flex-col gap-6">
           <h3 className="label-mono text-text-muted">{ui.contact.servicesHeading}</h3>
           <ul className="grid gap-4 md:grid-cols-3">

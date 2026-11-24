@@ -1,4 +1,4 @@
-// Build-time download of fonts that may not be committed to this public repository.
+// Build-time download of font files the build needs but the repository does not hold.
 //
 // Satoshi (pairing D) is licensed under the ITF Free Font License (FFL) 2.0. The FFL allows
 // self-hosting on our own website, but §02 forbids making the font files available through a
@@ -6,6 +6,11 @@
 // downloads the official package from Fontshare, checks it, and extracts only the files the site
 // needs into src/fonts/vendor/ (git-ignored). next/font/local reads them from there and serves
 // them from this site – visitors never contact Fontshare.
+//
+// Inter Medium as TrueType (SIL OFL, PF-028): the social images (next/og, src/lib/social-image.tsx)
+// can only read TTF, OTF or WOFF – not the WOFF2 files next/font uses – so the build downloads
+// Inter's TTF from Google Fonts (the host next/font/google already uses at build time). It is only
+// read at build time to draw the PNGs; browsers never load it.
 //
 // Runs before `npm run build` and `npm run dev` (npm `prebuild` / `predev`). Skips the download
 // when valid files are already present; `--force` downloads again. Any failure exits with code 1,
@@ -46,6 +51,23 @@ const FONTS = [
       { from: "Satoshi_Complete/License/FFL.txt", to: "FFL.txt" },
     ],
   },
+  {
+    name: "Inter (social images)",
+    // Google Fonts' versioned static file for Inter 500 (the CSS API serves TrueType to clients
+    // that do not ask for WOFF2). A versioned URL does not change; the pin guards it anyway.
+    url: "https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuI6fMZg.ttf",
+    dir: "inter",
+    // Not a package: the download is the font file itself.
+    direct: true,
+    files: [
+      {
+        to: "Inter-Medium.ttf",
+        ttf: true,
+        // Pinned 2026-11-24 (PF-028). See the header for how to accept a new file on purpose.
+        sha256: "8c883f63b2c4157d997319f2c8bc6995ed4357ef371940d31ca159004a4aae63",
+      },
+    ],
+  },
 ];
 
 const TIMEOUT_MS = 60_000;
@@ -61,6 +83,18 @@ function isWoff2(buf) {
   return buf.length > 1024 && buf.subarray(0, 4).toString("latin1") === "wOF2";
 }
 
+/** TrueType outlines start with 0x00010000 (OpenType with TrueType glyphs). */
+function isTtf(buf) {
+  return buf.length > 1024 && buf.readUInt32BE(0) === 0x00010000;
+}
+
+/** The file kind a pinned entry must be, checked before its hash. */
+function kindProblem(f, buf) {
+  if (f.woff2 && !isWoff2(buf)) return "is not a WOFF2 file";
+  if (f.ttf && !isTtf(buf)) return "is not a TrueType file";
+  return null;
+}
+
 function sha256(buf) {
   return createHash("sha256").update(buf).digest("hex");
 }
@@ -70,7 +104,7 @@ function isPresent(font) {
     const p = path.join(VENDOR, font.dir, f.to);
     if (!existsSync(p)) return false;
     const buf = readFileSync(p);
-    if (f.woff2 && !isWoff2(buf)) return false;
+    if (kindProblem(f, buf)) return false;
     if (f.sha256) {
       const actual = sha256(buf);
       if (actual !== f.sha256) {
@@ -139,22 +173,28 @@ async function fetchFont(font) {
     await res.body?.cancel();
     fail(`${font.name}: ${font.url} answered HTTP ${res.status} ${res.statusText}`);
   }
-  const zip = Buffer.from(await res.arrayBuffer());
+  const download = Buffer.from(await res.arrayBuffer());
 
   let entries;
-  try {
-    entries = extractFromZip(
-      zip,
-      font.files.map((f) => f.from),
-    );
-  } catch (err) {
-    fail(`${font.name}: the downloaded package could not be read (${err?.message ?? err})`);
+  if (font.direct) {
+    entries = new Map([[font.files[0].to, download]]);
+  } else {
+    try {
+      entries = extractFromZip(
+        download,
+        font.files.map((f) => f.from),
+      );
+    } catch (err) {
+      fail(`${font.name}: the downloaded package could not be read (${err?.message ?? err})`);
+    }
   }
+  const keyOf = (f) => (font.direct ? f.to : f.from);
 
   // Check every file before writing any, so a rejected download leaves the files on disk unchanged.
   for (const f of font.files) {
-    const data = entries.get(f.from);
-    if (f.woff2 && !isWoff2(data)) fail(`${font.name}: ${f.from} is not a WOFF2 file`);
+    const data = entries.get(keyOf(f));
+    const problem = kindProblem(f, data);
+    if (problem) fail(`${font.name}: ${keyOf(f)} ${problem}`);
     if (f.sha256) {
       const actual = sha256(data);
       if (actual !== f.sha256) {
@@ -163,9 +203,9 @@ async function fetchFont(font) {
             `${font.name}: the downloaded ${f.to} does not match the pinned file.`,
             `  pinned   sha256 ${f.sha256}`,
             `  received sha256 ${actual} (${data.length} bytes)`,
-            `  Fontshare is probably serving a new ${font.name} release. Nothing on disk was changed.`,
-            `  To accept the new release on purpose: read its licence (FFL.txt in the package), check the`,
-            `  font on /dev/type, then set sha256 for ${f.to} in scripts/fetch-fonts.mjs to the "received"`,
+            `  ${font.url} is probably serving a new ${font.name} release. Nothing on disk was changed.`,
+            `  To accept the new release on purpose: read its licence (for Satoshi FFL.txt in the package), check`,
+            `  the font (/dev/type, or the social images), then set sha256 for ${f.to} in scripts/fetch-fonts.mjs to the "received"`,
             `  value above and run \`npm run fonts:fetch -- --force\`.`,
           ].join("\n"),
         );
@@ -176,7 +216,7 @@ async function fetchFont(font) {
   const dir = path.join(VENDOR, font.dir);
   mkdirSync(dir, { recursive: true });
   for (const f of font.files) {
-    const data = entries.get(f.from);
+    const data = entries.get(keyOf(f));
     const target = path.join(dir, f.to);
     writeFileSync(`${target}.tmp`, data);
     renameSync(`${target}.tmp`, target);

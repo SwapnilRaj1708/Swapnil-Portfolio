@@ -289,15 +289,57 @@ export const siteSchema = z.strictObject({
   }),
 });
 
+/** The journey's chapters with a home section (BRIEF.md §3). */
+export const chapterSchema = z.enum(["port", "bus", "memory", "array", "core", "uplink"]);
+
 /** Section of the home page = one journey chapter (BRIEF.md §3, order D-24). */
 export const homeSectionSchema = z.strictObject({
-  chapter: z.enum(["port", "bus", "memory", "array", "core", "uplink"]),
+  chapter: chapterSchema,
   /** The element id the navigation links to (BRIEF.md §3). */
   sectionId: slug,
   /** Chapter number shown in the index label ("02 / ABOUT"). */
   index: z.int().positive(),
   label: text,
   heading: text,
+});
+
+// ---------------------------------------------------------------------------------------------
+// Stills (PF-028): Blender renders that open the home sections (the static tier)
+
+const stillFileSchema = z.strictObject({
+  /** A WebP master under public/media/stills/, e.g. "/media/stills/still-s1-bus-wide.webp". */
+  src: z.string().regex(/^\/media\/stills\/[a-z0-9-]+\.webp$/, { error: 'must be a WebP file under "/media/stills/"' }),
+  /** Intrinsic size in pixels (checked against the file at build). */
+  width: z.int().positive(),
+  height: z.int().positive(),
+});
+
+export const stillSchema = z
+  .strictObject({
+    chapter: chapterSchema,
+    /** Landscape crop: wide and landscape screens. */
+    wide: stillFileSchema,
+    /** Portrait crop: portrait and narrow screens. */
+    portrait: stillFileSchema,
+    /** Where the files came from. */
+    source: text,
+  })
+  .refine((s) => s.wide.width > s.wide.height && s.portrait.width < s.portrait.height, {
+    error: "the wide crop must be landscape and the portrait crop portrait",
+  });
+
+export const stillsSchema = z
+  .array(stillSchema)
+  .refine((stills) => chapterSchema.options.every((c) => stills.filter((s) => s.chapter === c).length === 1), {
+    error: "needs exactly one still per chapter",
+  });
+
+export const socialImageSchema = z.strictObject({
+  /** JPEG under public/media/stills/ (the social-image renderer reads PNG or JPEG, not WebP). */
+  src: z.string().regex(/^\/media\/stills\/[a-z0-9-]+\.jpe?g$/, { error: 'must be a JPEG file under "/media/stills/"' }),
+  width: z.literal(1200),
+  height: z.literal(630),
+  source: text,
 });
 
 /** Interface words (headings, button and link labels). Every value must be non-empty. */
@@ -314,6 +356,8 @@ export const contentSchema = z.strictObject({
   contactFlow: contactFlowSchema,
   site: siteSchema,
   homeSections: z.array(homeSectionSchema).length(6),
+  stills: stillsSchema,
+  socialImage: socialImageSchema,
 });
 
 export type Identity = z.infer<typeof identitySchema>;
@@ -330,6 +374,10 @@ export type DetailQuestion = z.infer<typeof detailQuestionSchema>;
 export type NavItem = z.infer<typeof navItemSchema>;
 export type Site = z.infer<typeof siteSchema>;
 export type HomeSection = z.infer<typeof homeSectionSchema>;
+export type Chapter = z.infer<typeof chapterSchema>;
+export type Still = z.infer<typeof stillSchema>;
+export type StillFile = Still["wide"];
+export type SocialImage = z.infer<typeof socialImageSchema>;
 export type Content = z.infer<typeof contentSchema>;
 /** What a data file must provide before parsing (inputs may omit defaults). */
 export type ContentInput = z.input<typeof contentSchema>;

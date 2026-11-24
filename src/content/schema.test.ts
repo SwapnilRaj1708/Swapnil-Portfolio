@@ -4,6 +4,7 @@ import { education, experience, services, skills } from "./data/career";
 import { about, identity } from "./data/identity";
 import { projects } from "./data/projects";
 import { homeSections, site } from "./data/site";
+import { socialImage, stills } from "./data/stills";
 import { ui } from "./data/ui";
 import { content } from "./index";
 import { ContentError, parseContent, parseUi } from "./validate";
@@ -21,6 +22,8 @@ function validInput() {
     contactFlow,
     site,
     homeSections,
+    stills,
+    socialImage,
   });
 }
 
@@ -155,6 +158,29 @@ describe("content schema", () => {
     const input = validInput();
     (input.experience[0] as { start: string }).start = "April 2025";
     expect(errorFor(input)).toContain('must be "YYYY-MM"');
+  });
+
+  it("has one still per chapter in both crops (PF-028)", () => {
+    expect(content.stills.map((s) => s.chapter)).toEqual(["port", "bus", "memory", "array", "core", "uplink"]);
+    // The hero's layout (`hero-copy` in globals.css) assumes the wide Port still is 16:9.
+    const port = content.stills[0].wide;
+    expect(port.width / port.height).toBeCloseTo(16 / 9, 3);
+
+    const missing = validInput();
+    missing.stills.pop();
+    expect(errorFor(missing)).toContain("needs exactly one still per chapter");
+
+    const notWebp = validInput() as unknown as { stills: { wide: { src: string } }[] };
+    notWebp.stills[1].wide.src = "/media/stills/still-s1-bus-wide.png";
+    expect(errorFor(notWebp)).toMatch(/must be a WebP file under "\/media\/stills\/"[\s\S]*stills\[1\]\.wide\.src/);
+
+    const swapped = validInput() as unknown as { stills: { portrait: { width: number; height: number } }[] };
+    swapped.stills[2].portrait = { ...swapped.stills[2].portrait, width: 1350, height: 1080 };
+    expect(errorFor(swapped)).toContain("the wide crop must be landscape and the portrait crop portrait");
+
+    const social = validInput() as unknown as { socialImage: { width: number } };
+    social.socialImage.width = 1000;
+    expect(errorFor(social)).toContain("socialImage.width");
   });
 
   it("rejects an empty interface label", () => {

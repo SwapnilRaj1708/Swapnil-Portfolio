@@ -17,7 +17,8 @@
     "review:shots": "npm run build && node scripts/review-shots.mjs",
     "size": "node scripts/size-report.mjs",
     "lighthouse": "npm run build && node scripts/lighthouse.mjs",
-    "media:capture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/capture-project-media.mjs"
+    "media:capture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/capture-project-media.mjs",
+    "media:stills": "node scripts/encode-stills.mjs"
   },
   "dependencies": {
     "clsx": "2.1.1",

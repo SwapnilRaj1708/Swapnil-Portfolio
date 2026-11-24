@@ -24,6 +24,8 @@
  * @property {(page: import("@playwright/test").Page) => Promise<void>} [prepare]
  * @property {Viewport[]} [viewports]  Overrides VIEWPORTS for this target
  * @property {import("@playwright/test").BrowserContextOptions} [contextOptions]  e.g. { javaScriptEnabled: false }
+ * @property {string} [download]  Save the served file itself under this name instead of a
+ *   screenshot (social images, icons); no viewports
  */
 
 /** @type {Viewport[]} */
@@ -112,6 +114,22 @@ export const NAMED_TARGETS = {
     contextOptions: { javaScriptEnabled: false },
     prepare: async (page) => {
       await page.getByRole("button", { name: "Transmit" }).scrollIntoViewIfNeeded();
+    },
+  },
+  // Stage 1 home (PF-028): the social images and the icons as served, byte for byte.
+  "social-home": { path: "/opengraph-image", download: "social-home.png" },
+  "social-work": { path: "/work/opengraph-image", download: "social-work.png" },
+  "social-resume": { path: "/resume/opengraph-image", download: "social-resume.png" },
+  favicon: { path: "/favicon.ico", download: "favicon.ico" },
+  "apple-icon": { path: "/apple-icon.png", download: "apple-icon.png" },
+  "icon-192": { path: "/icon1.png", download: "icon-192.png" },
+  "icon-512": { path: "/icon2.png", download: "icon-512.png" },
+  // The home page with every image request refused: the sections as designed text (PF-028).
+  "home-images-off": {
+    path: "/",
+    prepare: async (page) => {
+      await page.route("**/_next/image**", (route) => route.abort());
+      await page.reload({ waitUntil: "load" });
     },
   },
   // Chapter stops are added by PF-008, for example:

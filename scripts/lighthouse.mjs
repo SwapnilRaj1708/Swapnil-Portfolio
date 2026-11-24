@@ -1,10 +1,15 @@
-// Lighthouse: npm run lighthouse -- [routes…]   (default "/"; local only, not in CI)
+// Lighthouse: npm run lighthouse -- [routes…] [--applied]   (default "/"; local only, not in CI)
 //
 // Builds the site (the npm script runs `npm run build` first: font download, then `next build`),
 // serves it with `next start` on a free port, and runs Lighthouse CI (`lhci collect`) with the mobile config (Lighthouse's
 // default: phone emulation, simulated slow 4G and CPU slowdown) in Playwright's Chromium,
 // 3 runs per route. It prints the median of each category score and gates it against
-// budgets.config.mjs (STANDARDS.md §3).
+// budgets.config.mjs (STANDARDS.md §3), and prints the median LCP and CLS (CLS gated).
+//
+// --applied  Applied throttling instead of the simulation (`throttlingMethod: devtools`: the page
+//            really loads over slow 4G with a 4× slower CPU). D-32: where the LCP element is an
+//            image, the LCP limit (≤ 2.5 s) is checked this way – the simulation charges every
+//            script that finished before the image paint to it. LCP is gated only in this mode.
 //
 // Before launch the "is-crawlable" audit fails on purpose (noindex, nofollow – see
 // src/config/site.ts). The SEO gate leaves that one audit out, scored the way Lighthouse scores
@@ -65,11 +70,14 @@ function categoryScoreWithout(lhr, categoryId, excluded) {
 }
 
 async function main() {
-  const routes = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  for (const f of args.filter((a) => a.startsWith("--"))) if (f !== "--applied") throw new Error(`Unknown option ${f}`);
+  const applied = args.includes("--applied");
+  const routes = args.filter((a) => !a.startsWith("--"));
   if (routes.length === 0) routes.push("/");
   for (const r of routes) if (!r.startsWith("/")) throw new Error(`Route must start with "/": ${r}`);
 
-  const { runs, minScores } = budgets.lighthouse;
+  const { runs, minScores, maxCls, maxLcpMs } = budgets.lighthouse;
   const chromePath = chromium.executablePath();
   const server = await startProdServer();
   console.log(`Serving the production build at ${server.origin}`);
@@ -85,6 +93,7 @@ async function main() {
       ...routes.map((r) => `--url=${new URL(r, server.origin).href}`),
       `--numberOfRuns=${runs}`,
       `--chromePath=${chromePath}`,
+      ...(applied ? ["--settings.throttlingMethod=devtools"] : []),
     ]);
   } finally {
     await server.stop();
@@ -101,12 +110,15 @@ async function main() {
   }
 
   const failures = [];
-  console.log(`\nLighthouse, mobile, median of ${runs} runs (STANDARDS.md §3)\n`);
+  const mode = applied ? "applied throttling (devtools: slow 4G, 4× CPU)" : "simulated throttling";
+  console.log(`\nLighthouse, mobile, ${mode}, median of ${runs} runs (STANDARDS.md §3)\n`);
   for (const route of routes) {
     const lhrs = byRoute.get(route) ?? [];
     if (lhrs.length !== runs) failures.push(`${route}: expected ${runs} runs, found ${lhrs.length}`);
     if (lhrs.length === 0) continue;
-    console.log(`Route ${route}  (Lighthouse ${lhrs[0].lighthouseVersion}, ${lhrs[0].configSettings.formFactor})`);
+    const method = lhrs[0].configSettings.throttlingMethod;
+    if (method !== (applied ? "devtools" : "simulate")) failures.push(`${route}: ran with throttlingMethod "${method}"`);
+    console.log(`Route ${route}  (Lighthouse ${lhrs[0].lighthouseVersion}, ${lhrs[0].configSettings.formFactor}, ${method})`);
 
     for (const [id, min] of Object.entries(minScores)) {
       const excluded = id === "seo" && !launched ? [EXPECTED_BEFORE_LAUNCH] : [];
@@ -128,6 +140,20 @@ async function main() {
         `  ${id.padEnd(16)} ${String(value).padStart(3)}  ≥ ${min}  ${ok ? "ok" : "FAIL"}   runs: ${perRun.join(", ")}${note}`,
       );
     }
+
+    const lcp = lhrs.map((l) => l.audits["largest-contentful-paint"].numericValue);
+    const cls = lhrs.map((l) => l.audits["cumulative-layout-shift"].numericValue);
+    // Lighthouse 13: the LCP element is the node item of the LCP breakdown insight.
+    const lcpElement = lhrs[0].audits["lcp-breakdown-insight"]?.details?.items?.find((i) => i.type === "node")?.selector;
+    const lcpOk = !applied || median(lcp) <= maxLcpMs;
+    if (!lcpOk) failures.push(`${route} LCP: ${Math.round(median(lcp))} ms > ${maxLcpMs} ms (applied throttling, D-32)`);
+    console.log(
+      `  ${"LCP".padEnd(16)} ${(median(lcp) / 1000).toFixed(2)} s  ${applied ? `≤ ${maxLcpMs / 1000} s  ${lcpOk ? "ok" : "FAIL"}` : "(reported; gated with --applied, D-32)"}` +
+        `   runs: ${lcp.map((v) => (v / 1000).toFixed(2)).join(", ")}${lcpElement ? `   element: ${lcpElement}` : ""}`,
+    );
+    const clsOk = median(cls) <= maxCls;
+    if (!clsOk) failures.push(`${route} CLS: ${median(cls).toFixed(3)} > ${maxCls}`);
+    console.log(`  ${"CLS".padEnd(16)} ${median(cls).toFixed(3)}  ≤ ${maxCls}  ${clsOk ? "ok" : "FAIL"}   runs: ${cls.map((v) => v.toFixed(3)).join(", ")}`);
 
     if (!launched) {
       const audit = lhrs[0].audits[EXPECTED_BEFORE_LAUNCH];

@@ -107,6 +107,13 @@
   --screen-dim: 0.78;
   --spacing-readout-band: clamp(9rem, 6rem + 10vw, 15rem);
 
+  /*
+   * Stage 1 stills (PF-028): each home section opens on a banner – 21:9 from `md`, 4:5 below
+   * (the crops the stills were rendered in, src/content/data/stills.ts).
+   */
+  --aspect-banner-wide: 21 / 9;
+  --aspect-banner-narrow: 4 / 5;
+
   /* Content widths */
   --container-content: 80rem;
   --container-prose: 40rem;
@@ -192,6 +199,28 @@
 /* First screen of a page, below the sticky header. */
 @utility min-h-first-screen {
   min-height: calc(100svh - var(--spacing-header));
+}
+
+/*
+ * Hero on landscape screens (PF-028). The wide Port still (16:9) covers the hero from the left edge
+ * of the content column to the right edge of the window, anchored left (`object-left`). On screens
+ * wider than the content column the page background fills the space to its left – it matches the
+ * still's dark left side. The text-safe area is the left 40 % of the image as drawn (look bible,
+ * BRIEF.md §4), and the image is drawn max(box width, box height × 16/9) wide. So the copy column
+ * starts where the image starts and is 40 % of that drawn width, taking the smallest height the
+ * hero can have (the first screen): never wider than the safe area, whatever the window's shape.
+ * e2e/stills.spec.ts checks it at several window sizes.
+ */
+@utility hero-still-inset {
+  left: max(0px, calc((100% - var(--container-content)) / 2));
+}
+
+@utility hero-copy {
+  margin-left: max(0px, calc((100% - var(--container-content)) / 2));
+  width: max(
+    calc((100% - max(0px, calc((100% - var(--container-content)) / 2))) * 0.4),
+    calc((100svh - var(--spacing-header)) * 16 / 9 * 0.4)
+  );
 }
 
 @layer base {

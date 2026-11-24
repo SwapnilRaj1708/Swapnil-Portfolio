@@ -9,8 +9,12 @@
 // --headed     runs a visible browser window, which normally gets the real GPU.
 // --full-page  captures the whole scrollable page instead of the first screen (it scrolls through
 //              the page first, so lazy-loaded images are in the picture).
+//
+// A named target with `download` (scripts/review/targets.mjs: social images, icons) saves the
+// served file itself instead of a screenshot. capture.json keeps the captures of earlier runs into
+// the same folder (a run with ENABLE_DEV_PAGES=1 for /dev pages adds to it).
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { resolveTargets, VIEWPORTS } from "./review/targets.mjs";
@@ -105,6 +109,23 @@ async function main() {
   const captures = [];
   try {
     for (const target of targets) {
+      if (target.download) {
+        // A served file (social image, icon): saved as it is, no browser involved.
+        const res = await fetch(new URL(target.path, server.origin));
+        const body = Buffer.from(await res.arrayBuffer());
+        await writeFile(path.join(outDir, target.download), body);
+        captures.push({
+          target: target.name,
+          file: target.download,
+          url: target.path,
+          status: res.status,
+          contentType: res.headers.get("content-type"),
+          bytes: body.length,
+          timestamp: new Date().toISOString(),
+        });
+        console.log(`wrote .review/${id}/${target.download}  (${res.status}, ${res.headers.get("content-type")}, ${body.length} bytes)`);
+        continue;
+      }
       for (const vp of target.viewports ?? VIEWPORTS) {
         const context = await browser.newContext({
           viewport: { width: vp.width, height: vp.height },
@@ -158,16 +179,29 @@ async function main() {
     await server.stop();
   }
 
+  // Several runs may write into one folder (e.g. a second build with ENABLE_DEV_PAGES=1): keep the
+  // earlier captures, replacing those this run took again.
+  const manifestPath = path.join(outDir, "capture.json");
+  /** @type {any[]} */
+  let earlier = [];
+  try {
+    earlier = JSON.parse(await readFile(manifestPath, "utf8")).captures ?? [];
+  } catch {
+    earlier = [];
+  }
+  const key = (c) => `${c.target}|${c.viewport?.name ?? "file"}`;
+  const taken = new Set(captures.map(key));
   const manifest = {
     id,
     createdAt: new Date().toISOString(),
     browser: `Chromium ${browserVersion} (Playwright, ${headed ? "headed" : "headless"})`,
     platform: `${process.platform} ${process.arch}`,
     server: "next start (production build), local free port",
-    captures,
+    devPages: process.env.ENABLE_DEV_PAGES === "1",
+    captures: [...earlier.filter((c) => !taken.has(key(c))), ...captures],
   };
-  await writeFile(path.join(outDir, "capture.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  const renderers = [...new Set(captures.map((c) => `${c.webgl.renderer ?? "none"} → ${c.webgl.gpu}`))];
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const renderers = [...new Set(captures.filter((c) => c.webgl).map((c) => `${c.webgl.renderer ?? "none"} → ${c.webgl.gpu}`))];
   console.log(`wrote .review/${id}/capture.json`);
   console.log(`WebGL renderer: ${renderers.join(" | ")}`);
 }

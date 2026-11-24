@@ -19,6 +19,13 @@ async function withSwitch(launched: boolean) {
   return { metadata, robots, nextConfig: config(PHASE_PRODUCTION_SERVER) };
 }
 
+describe("next.config: production builds", () => {
+  it("never reuse Turbopack's build cache (a restored .next/cache shipped stale CSS on Vercel, PF-028)", async () => {
+    const { nextConfig } = await withSwitch(false);
+    expect(nextConfig.experimental?.turbopackFileSystemCacheForBuild).toBe(false);
+  });
+});
+
 afterEach(() => {
   vi.doUnmock("@/config/site");
   vi.resetModules();

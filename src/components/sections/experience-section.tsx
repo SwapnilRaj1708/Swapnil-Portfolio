@@ -6,7 +6,7 @@ import { HomeSection } from "./home-section";
 export function ExperienceSection() {
   return (
     <HomeSection section={getHomeSection("memory")}>
-      <RoleList roles={experience} className="col-span-full lg:col-span-8 lg:col-start-5" />
+      <RoleList roles={experience} className="col-span-full lg:col-span-10" />
     </HomeSection>
   );
 }

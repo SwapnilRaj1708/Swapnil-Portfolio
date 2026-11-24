@@ -77,6 +77,35 @@ describe("home page", () => {
     expect(contact.getByRole("group", { name: "What brings you here?" })).toBeInTheDocument();
   });
 
+  it("opens the hero and every section on its still, art-directed and decorative (PF-028)", () => {
+    const { container } = renderHome();
+    const pictures = [...container.querySelectorAll("main section[data-chapter] picture")];
+    expect(pictures.map((p) => p.closest("section")?.id)).toEqual(["top", "about", "experience", "work", "skills", "contact"]);
+    pictures.forEach((picture, i) => {
+      const chapter = homeSections[i].chapter;
+      const source = picture.querySelector("source")!;
+      const img = picture.querySelector("img")!;
+      // Wide crop for landscape (hero) or from `md` (banners); the portrait crop otherwise.
+      expect(source.getAttribute("media")).toBe(chapter === "port" ? "(orientation: landscape)" : "(min-width: 48rem)");
+      expect(source.getAttribute("srcset")).toContain(encodeURIComponent(`/media/stills/still-s1-${chapter}-wide.webp`));
+      expect(img.getAttribute("srcset")).toContain(encodeURIComponent(`/media/stills/still-s1-${chapter}-portrait.webp`));
+      expect(img).toHaveAttribute("alt", "");
+      expect(img).toHaveAttribute("sizes", "100vw");
+      // The hero still is the largest paint: at once, high priority. Banners: lazy.
+      expect(img.getAttribute("loading")).toBe(chapter === "port" ? "eager" : "lazy");
+      expect(img.getAttribute("fetchpriority")).toBe(chapter === "port" ? "high" : null);
+    });
+  });
+
+  it("puts each section's index label and h2 on its banner", () => {
+    const { container } = renderHome();
+    for (const s of homeSections.filter((x) => x.chapter !== "port")) {
+      const overStill = container.querySelector(`section#${s.sectionId} [data-over-still]`) as HTMLElement;
+      expect(within(overStill).getByRole("heading", { level: 2 })).toHaveTextContent(s.heading);
+      expect(overStill).toHaveTextContent(`${String(s.index).padStart(2, "0")} / ${s.label}`);
+    }
+  });
+
   it("links Work and Resume from the hero (one action away)", () => {
     const { container } = renderHome();
     const hero = within(container.querySelector("section#top") as HTMLElement);
