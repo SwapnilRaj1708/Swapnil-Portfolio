@@ -22,6 +22,16 @@ const nextConfig: NextConfig = {
     // Next 16 requires the allowlist; 75 is its default and the only quality the site uses.
     qualities: [75],
   },
+  experimental: {
+    // Every production build starts cold: no Turbopack build cache in .next/cache/turbopack
+    // (on by default since Next 16.3). Vercel restores .next/cache from an earlier deployment,
+    // and the PF-028 preview shipped CSS compiled from main's globals.css with PF-028's class
+    // names: every token PF-028 added to globals.css (the banner aspect ratios, hero-copy,
+    // hero-still-inset) was missing, the banners collapsed to 0 px and their headings with them.
+    // A cold build costs a little time and always compiles the CSS from the committed source.
+    // `next dev` keeps its own cache (.next/dev/cache), unaffected.
+    turbopackFileSystemCacheForBuild: false,
+  },
   turbopack: {
     rules: {
       "*.css": {

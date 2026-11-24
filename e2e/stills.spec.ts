@@ -197,6 +197,57 @@ test.describe("stills", () => {
     await expectNoAxeViolations(page, "home, images off");
   });
 
+  // The PF-028 Vercel preview shipped CSS without the banners' aspect ratio: each banner collapsed
+  // to 0 px and clipped its label and heading away with the still – yet `toBeVisible()` still
+  // passed (a clipped element keeps its box). So this checks what is painted: the label and
+  // heading lie inside their banner, and hit-testing at the heading lands on it.
+  const CONDITIONS = [
+    { name: "stills blocked", simpleView: false, dropRatio: false },
+    { name: "stills blocked and the banners' aspect ratio lost", simpleView: false, dropRatio: true },
+    { name: "simple view on and stills blocked", simpleView: true, dropRatio: false },
+  ];
+  for (const c of CONDITIONS) {
+    test(`every section's index label and heading render without its still (${c.name})`, async ({ page }) => {
+      if (c.simpleView) {
+        await page.addInitScript(() => {
+          try {
+            window.localStorage.setItem("simple-view", "on");
+          } catch {}
+        });
+      }
+      await page.route("**/_next/image**", (route) => route.abort());
+      await page.goto("/");
+      if (c.dropRatio) await page.addStyleTag({ content: "main section[data-chapter] * { aspect-ratio: auto !important; }" });
+      for (const s of homeSections.filter((x) => x.chapter !== "port")) {
+        const heading = page.getByRole("heading", { level: 2, name: s.heading });
+        await heading.evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - window.innerHeight / 2));
+        const found = await heading.evaluate((h) => {
+          const text = h.closest<HTMLElement>("[data-over-still]")!;
+          // The banner: the nearest ancestor that clips its content.
+          let banner = text.parentElement!;
+          while (getComputedStyle(banner).overflow === "visible") banner = banner.parentElement!;
+          const t = text.getBoundingClientRect();
+          const b = banner.getBoundingClientRect();
+          const r = h.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + r.height / 2);
+          return {
+            label: text.textContent ?? "",
+            textHeight: Math.round(t.height),
+            inside: t.top >= b.top - 0.5 && t.bottom <= b.bottom + 0.5 && t.left >= b.left - 0.5 && t.right <= b.right + 0.5,
+            bannerHeight: Math.round(b.height),
+            hitsHeading: !!hit && h.contains(hit),
+          };
+        });
+        const where = `${s.sectionId} (${c.name}): ${JSON.stringify(found)}`;
+        expect(found.label, where).toContain(s.label);
+        expect(found.textHeight, where).toBeGreaterThan(0);
+        expect(found.bannerHeight, where).toBeGreaterThanOrEqual(found.textHeight);
+        expect(found.inside, where).toBe(true);
+        expect(found.hitsHeading, where).toBe(true);
+      }
+    });
+  }
+
   test.describe("without JavaScript", () => {
     test.use({ javaScriptEnabled: false });
 
