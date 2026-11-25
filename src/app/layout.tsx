@@ -37,7 +37,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={clsx(activePairing.className, "h-full antialiased")}>
-      <body className="flex min-h-full flex-col font-sans">
+      {/* With the 3D layer built in (D-39), body isolates its stacking context: the canvas layer
+          (z-index below 0) then paints above body's own background instead of under it. */}
+      <body className={clsx("flex min-h-full flex-col font-sans", process.env.JOURNEY_LAYER === "on" && "isolate")}>
         <SiteShell>{children}</SiteShell>
         <SiteAnalytics />
       </body>

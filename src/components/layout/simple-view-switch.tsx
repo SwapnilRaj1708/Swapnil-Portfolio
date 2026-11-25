@@ -6,8 +6,9 @@ import { useSimpleView } from "@/lib/use-simple-view";
 
 /**
  * "Simple view" switch (STANDARDS.md §2): a toggle button with aria-pressed. The choice is
- * remembered (src/lib/simple-view.ts); PF-007 makes it select the static tier. Hidden without
- * JavaScript, where it could do nothing.
+ * remembered (src/lib/simple-view.ts). "On" selects the static tier: the canvas unmounts and frees
+ * the GPU; "off" runs the tier checks again (PF-007, src/components/journey/journey-layer.tsx).
+ * Hidden without JavaScript, where it could do nothing.
  */
 export function SimpleViewSwitch({ className }: { className?: string }) {
   const on = useSimpleView();
@@ -25,7 +26,7 @@ export function SimpleViewSwitch({ className }: { className?: string }) {
         aria-hidden="true"
         className="relative inline-flex h-4 w-7 shrink-0 items-center rounded-xs border border-line-strong bg-surface transition-colors duration-fast ease-signal group-aria-pressed:border-accent-signal group-aria-pressed:bg-signal-soft"
       >
-        <span className="absolute left-0.5 size-2.5 rounded-none bg-text-muted transition duration-fast ease-signal group-aria-pressed:translate-x-3.5group-aria-pressed:bg-accent-signal" />
+        <span className="absolute left-0.5 size-2.5 rounded-none bg-text-muted transition duration-fast ease-signal group-aria-pressed:translate-x-3.5 group-aria-pressed:bg-accent-signal" />
       </span>
       Simple view
     </button>

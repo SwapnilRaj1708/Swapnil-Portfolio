@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./fixtures";
 import sharp from "sharp";
 import { identity, about } from "../src/content/data/identity";
 import { homeSections, site } from "../src/content/data/site";
@@ -10,6 +10,14 @@ import { expectNoAxeViolations } from "./axe";
 // the icons and the manifest.
 
 const CHAPTERS = homeSections.map((s) => s.chapter);
+
+/**
+ * The home page in the static tier – the stage 1 home these tests are about. Where the 3D layer is
+ * built in (local builds, previews: PF-007) the hero shows the canvas instead of the Port still on
+ * the render tiers, so the stills are checked with the tier forced static; a production build
+ * ignores `?tier=` and is the static home anyway (D-39).
+ */
+const STATIC_HOME = "/?tier=static";
 
 /** Window sizes the text-safe check runs at (desktop project): phones, tablets, laptops, wide. */
 const VIEWPORTS = [
@@ -26,6 +34,9 @@ const VIEWPORTS = [
 
 /** Scrolls every still into view and waits until each has loaded its current crop. */
 async function loadAllStills(page: Page) {
+  // Where the 3D layer is built in, the hero gets its still only in the static tier, once the tier
+  // is known (just after hydration), and the canvas otherwise: wait for one of them before counting.
+  await page.locator("section#top picture img, [data-journey-host]").first().waitFor({ state: "attached", timeout: 30_000 });
   const count = await page.locator("main section[data-chapter] picture img").count();
   for (let i = 0; i < count; i++) {
     const img = page.locator("main section[data-chapter] picture img").nth(i);
@@ -117,7 +128,7 @@ test.describe("text over the stills", () => {
     test.setTimeout(120_000);
     for (const vp of VIEWPORTS) {
       await page.setViewportSize(vp);
-      await page.goto("/");
+      await page.goto(STATIC_HOME);
       await loadAllStills(page);
       await expectTextInsideSafeAreas(page, `${vp.width}×${vp.height}`);
     }
@@ -125,7 +136,7 @@ test.describe("text over the stills", () => {
 
   test("stays inside each still's text-safe area on the phone", async ({ page }, info) => {
     test.skip(info.project.name !== "phone", "phone project only");
-    await page.goto("/");
+    await page.goto(STATIC_HOME);
     await loadAllStills(page);
     await expectTextInsideSafeAreas(page, "phone");
   });
@@ -133,7 +144,7 @@ test.describe("text over the stills", () => {
 
 test.describe("stills", () => {
   test("the hero still loads at once and at high priority; every banner lazily", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(STATIC_HOME);
     const hero = page.locator("section#top picture img");
     await expect(hero).toHaveAttribute("loading", "eager");
     await expect(hero).toHaveAttribute("fetchpriority", "high");
@@ -145,12 +156,12 @@ test.describe("stills", () => {
   });
 
   test("with images off every section still reads as designed text on the background colour", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(STATIC_HOME);
     await loadAllStills(page);
     const withImages = await page.locator("main section[data-chapter]").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
 
     await page.route("**/_next/image**", (route) => route.abort());
-    await page.goto("/");
+    await page.goto(STATIC_HOME);
     await page.evaluate(async () => {
       for (let y = 0; y < document.body.scrollHeight; y += window.innerHeight / 2) {
         window.scrollTo(0, y);

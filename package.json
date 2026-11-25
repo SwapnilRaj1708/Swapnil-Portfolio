@@ -16,11 +16,13 @@
     "test:e2e": "playwright test",
     "review:shots": "npm run build && node scripts/review-shots.mjs",
     "size": "node scripts/size-report.mjs",
+    "numbers": "npm run build && node scripts/numbers.mjs",
     "lighthouse": "npm run build && node scripts/lighthouse.mjs",
     "media:capture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/capture-project-media.mjs",
     "media:stills": "node scripts/encode-stills.mjs"
   },
   "dependencies": {
+    "@react-three/fiber": "9.8.2",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.1.0",
     "clsx": "2.1.1",
@@ -28,7 +30,9 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "resend": "6.39.0",
-    "zod": "4.6.7"
+    "three": "0.187.0",
+    "zod": "4.6.7",
+    "zustand": "5.1.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
@@ -41,10 +45,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "0.187.0",
     "@vitejs/plugin-react": "6.3.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "jsdom": "31.0.1",
+    "leva": "0.10.1",
+    "r3f-perf": "7.2.3",
     "tailwindcss": "4.3.3",
     "typescript": "^5",
     "vitest": "4.1.12"

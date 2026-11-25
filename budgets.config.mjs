@@ -1,6 +1,6 @@
 // Budgets checked by the repo's scripts. Values come from STANDARDS.md §3 –
 // change them only with the owner's approval (a budget change is an owner decision).
-// Later items add their limits here (the lazy 3D chunk, chapter assets, the whole journey).
+// Later items add their limits here (chapter assets, the whole journey).
 
 /** 1 KB = 1000 bytes, as in the budget tables. */
 export const KB = 1000;
@@ -10,6 +10,13 @@ export const budgets = {
   // Gated on gzip (larger, so stricter than Brotli); Brotli is printed for information.
   firstLoadJs: {
     gzipBytes: 200 * KB,
+  },
+
+  // `npm run size` (PF-007): the lazy 3D chunk – every JavaScript file the canvas loader pulls in
+  // after the page is interactive (three, React Three Fiber, the scene). Gzip, like first-load JS.
+  // First-load JS of every route must not contain three.js or React Three Fiber at all.
+  threeDChunk: {
+    gzipBytes: 400 * KB,
   },
 
   // Dynamic routes cannot be fetched without a real path. Give each one sample paths here,

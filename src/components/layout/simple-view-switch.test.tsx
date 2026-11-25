@@ -68,4 +68,16 @@ describe("Simple view switch", () => {
     act(() => store.setSimpleView(true));
     expect(screen.getByRole("button", { name: "Simple view" })).toHaveAttribute("aria-pressed", "true");
   });
+
+  // Regression (found in PF-007): two classes had run together ("…translate-x-3.5group-aria-…"),
+  // so the knob neither moved nor lit up when the switch was on.
+  it("moves and lights the knob when pressed (each state class stands on its own)", async () => {
+    const { SimpleViewSwitch } = await loadSwitch();
+    render(<SimpleViewSwitch />);
+    const knob = screen.getByRole("button", { name: "Simple view" }).querySelector("span > span")!;
+    const classes = knob.getAttribute("class")!.split(/\s+/);
+    expect(classes).toContain("group-aria-pressed:translate-x-3.5");
+    expect(classes).toContain("group-aria-pressed:bg-accent-signal");
+    for (const c of classes) expect(c.match(/:/g)?.length ?? 0, c).toBeLessThanOrEqual(1);
+  });
 });

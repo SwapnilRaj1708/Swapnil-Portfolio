@@ -1,3 +1,5 @@
+import { clsx } from "clsx";
+import { TierBackdrop } from "@/components/journey/gate";
 import { StillPicture } from "@/components/stills/still-picture";
 import { StillScrims } from "@/components/stills/still-scrims";
 import { ButtonLink } from "@/components/ui/button-link";
@@ -17,25 +19,36 @@ const WIDE_MEDIA = "(orientation: landscape)";
  * availability chip and the two links – each on its own solid surface – stand below the port.
  * The still loads at once at high priority (it is the largest paint) and only covers a box whose
  * size does not depend on it: no layout shift.
+ *
+ * With the 3D layer built in (D-39, PF-007) the hero is the canvas's window: its background is
+ * transparent and the still is drawn only in the static tier (TierBackdrop – on the render tiers
+ * it is not even downloaded). On the production deployment the hero stays exactly as above.
  */
 export function HeroSection() {
   const section = getHomeSection("port");
+  const journey = process.env.JOURNEY_LAYER === "on";
+  const backdrop = (
+    <div
+      aria-hidden="true"
+      className={clsx("absolute inset-y-0 right-0 left-0 -z-10 landscape:hero-still-inset", journey && "bg-background")}
+    >
+      <StillPicture
+        still={getStill("port")}
+        wideMedia={WIDE_MEDIA}
+        eager
+        className="absolute inset-0 size-full object-cover object-top landscape:object-left"
+      />
+      <StillScrims chapter="port" wideClassName="hidden landscape:block" portraitClassName="landscape:hidden" />
+    </div>
+  );
   return (
     <section
       id={section.sectionId}
       aria-label={section.label}
       data-chapter={section.chapter}
-      className="relative isolate flex min-h-first-screen flex-col overflow-hidden bg-background"
+      className={clsx("relative isolate flex min-h-first-screen flex-col overflow-hidden", !journey && "bg-background")}
     >
-      <div aria-hidden="true" className="absolute inset-y-0 right-0 left-0 -z-10 landscape:hero-still-inset">
-        <StillPicture
-          still={getStill("port")}
-          wideMedia={WIDE_MEDIA}
-          eager
-          className="absolute inset-0 size-full object-cover object-top landscape:object-left"
-        />
-        <StillScrims chapter="port" wideClassName="hidden landscape:block" portraitClassName="landscape:hidden" />
-      </div>
+      {journey ? <TierBackdrop>{backdrop}</TierBackdrop> : backdrop}
 
       <div className="flex w-full flex-1 flex-col gap-10 px-gutter py-8 portrait:mx-auto portrait:max-w-content portrait:justify-between landscape:hero-copy landscape:justify-center landscape:py-section">
         <div data-over-still="port" className="flex flex-col items-start gap-3 landscape:gap-5">

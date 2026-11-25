@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./fixtures";
 
 const NAV_TARGETS = ["Work", "About", "Experience", "Skills", "Contact", "Resume", "Simple view"];
 // Phones: Work and Resume are quick links in the header (one tap away), before the menu button;

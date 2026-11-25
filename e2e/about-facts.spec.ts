@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { identity } from "../src/content/data/identity";
 
 // The facts readout beside the About text (PF-029, D-38): where it sits at each width, what a
@@ -9,6 +9,9 @@ const WIDTHS = [360, 390, 768, 1023, 1024, 1280, 1440, 1920];
 test.describe("About facts readout", () => {
   test("sits beside the text from 1024 px and below it on narrower screens", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "window sizes are set here; the phone project has its own");
+    // Where the 3D layer is built in (PF-007) every resize also resizes the canvas, rendered in
+    // software on test machines: under a full parallel run this took longer than 30 s.
+    test.setTimeout(60_000);
     // The layout is CSS only, so one load and a resize per width is enough (eight loads of `/`
     // with its stills ran past the test timeout when every worker was busy).
     await page.goto("/");
