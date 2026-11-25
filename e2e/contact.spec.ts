@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./fixtures";
 import { contactFlow } from "../src/content/data/contact-flow";
 import { ui } from "../src/content/data/ui";
 import { expectNoAxeViolations, expectSameAsWithoutJavaScript, openWithoutScripts } from "./axe";

@@ -132,11 +132,89 @@ export const NAMED_TARGETS = {
       await page.reload({ waitUntil: "load" });
     },
   },
+  // PF-007: the canvas shell. `?tier=` forces a tier (allowed off the production deployment).
+  // The test object behind the hero on the high tier, desktop and phone.
+  "home-high": { path: "/?tier=high", prepare: (page) => waitForCanvas(page) },
+  // Forced low tier (pixel ratio 1, fewer segments, no antialiasing).
+  "home-low": { path: "/?tier=low", viewports: [VIEWPORTS[0]], prepare: (page) => waitForCanvas(page) },
+  // Reduced motion → the static tier: must equal the stage 1 hero.
+  "home-reduced-motion": {
+    path: "/",
+    viewports: [VIEWPORTS[0]],
+    contextOptions: { reducedMotion: "reduce" },
+    prepare: (page) => waitForStatic(page, "reduced-motion"),
+  },
+  // Simple view on (remembered) → the static tier.
+  "home-simple-view": {
+    path: "/",
+    viewports: [VIEWPORTS[1]],
+    prepare: async (page) => {
+      await page.evaluate(() => window.localStorage.setItem("simple-view", "on"));
+      await page.reload({ waitUntil: "load" });
+      await waitForStatic(page, "simple-view");
+    },
+  },
+  // An opaque page: the canvas must not show through (desktop).
+  "work-desktop": { path: "/work", viewports: [VIEWPORTS[0]] },
+  // The dev tuning panel (leva) and performance overlay (r3f-perf). Needs a build with
+  // ENABLE_DEV_PAGES=1; `?tune` shows them there (under `next dev` they show at once).
+  "home-dev-tools": {
+    path: "/?tier=high&tune",
+    viewports: [VIEWPORTS[0]],
+    prepare: async (page) => {
+      await waitForCanvas(page);
+      await page.locator("[data-dev-panel] > *").first().waitFor({ state: "visible", timeout: 15_000 });
+      await page.locator("[data-journey-host] .__perf_toggle, [data-journey-host] canvas ~ div").first().waitFor({ state: "attached", timeout: 15_000 });
+      await page.waitForTimeout(1500);
+    },
+  },
   // Chapter stops are added by PF-008, for example:
   // "port-start": { path: "/", prepare: async (page) => { /* scroll to the start of `port` */ } },
 };
 
 export const DEFAULT_TARGETS = ["/"];
+
+// ---------------------------------------------------------------------------------------------
+// The canvas (PF-007)
+
+/** Waits until the canvas has drawn and faded in (and the scene had a moment to turn). */
+export async function waitForCanvas(page) {
+  await page.waitForFunction(() => window.__journey?.ready === true, null, { timeout: 60_000 });
+  await page.locator("[data-journey-host][data-shown]").waitFor({ state: "attached" });
+  await page.waitForTimeout(900);
+}
+
+/** Waits for the static tier (with the expected reason) and the hero still to be drawn. */
+async function waitForStatic(page, reason) {
+  await page.waitForFunction((r) => window.__journey?.state().tier === "static" && window.__journey.state().reason === r, reason, { timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const img = document.querySelector("section#top picture img");
+    return !!img && img.complete && img.naturalWidth > 0;
+  });
+  await page.waitForTimeout(300);
+}
+
+/**
+ * Stops for `npm run numbers`: where the scene is measured. A stop is a route plus an optional
+ * `prepare(page)` (PF-008 adds chapter stops: scroll to a chapter's start, middle and end).
+ * @type {Record<string, { path: string, prepare?: (page: import("@playwright/test").Page) => Promise<void> }>}
+ */
+export const NUMBER_STOPS = {
+  // The PF-007 test object behind the hero.
+  "/": { path: "/" },
+};
+
+export const DEFAULT_STOPS = ["/"];
+
+/** Command-line stops → stop objects. */
+export function resolveStops(args) {
+  const list = args.length ? args : DEFAULT_STOPS;
+  return list.map((name) => {
+    const stop = NUMBER_STOPS[name];
+    if (!stop) throw new Error(`Unknown stop "${name}". Known: ${Object.keys(NUMBER_STOPS).join(", ")}.`);
+    return { name, ...stop };
+  });
+}
 
 // ---------------------------------------------------------------------------------------------
 // Contact flow helpers (PF-019)

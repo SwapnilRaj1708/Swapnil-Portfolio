@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants";
+import { JOURNEY_LAUNCHED, journeyBuildEnv } from "./src/config/journey";
 import { NOINDEX_DIRECTIVE, SITE_PUBLIC } from "./src/config/site";
 import { checkContentFiles } from "./src/content/check-files";
 import { content } from "./src/content/index";
@@ -65,5 +66,16 @@ export default function config(phase: string): NextConfig {
       throw new Error(`Content files missing or wrong (see docs/content.md):\n  ${problems.join("\n  ")}`);
     }
   }
-  return nextConfig;
+  return {
+    ...nextConfig,
+    // Journey switch (D-39, src/config/journey.ts): whether the 3D layer, the ?tier= override and
+    // the dev tools are built in. Inlined into every bundle as process.env.JOURNEY_*; code that
+    // imports the 3D layer tests the value in place, so an "off" build does not contain it at all.
+    env: journeyBuildEnv({
+      launched: JOURNEY_LAUNCHED,
+      vercelEnv: process.env.VERCEL_ENV,
+      devServer: phase === PHASE_DEVELOPMENT_SERVER,
+      enableDevPages: process.env.ENABLE_DEV_PAGES,
+    }),
+  };
 }

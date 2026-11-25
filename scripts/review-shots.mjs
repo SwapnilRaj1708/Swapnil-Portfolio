@@ -6,6 +6,11 @@
 // .review/<ID>/capture.json with the viewport, URL, timestamp and the WebGL renderer the page
 // reports, so a review can tell a software renderer (SwiftShader) from a real GPU.
 //
+// GPU (D-40): every page is opened with `?gpu=low-power` (honoured off the production deployment
+// only), so the canvas asks for the integrated GPU – on the reference laptop the AMD Radeon the
+// numbers are measured on – instead of the visitors' "high-performance". capture.json records the
+// renderer a context with that preference gets.
+//
 // --headed     runs a visible browser window, which normally gets the real GPU.
 // --full-page  captures the whole scrollable page instead of the first screen (it scrolls through
 //              the page first, so lazy-loaded images are in the picture).
@@ -22,11 +27,14 @@ import { ROOT, startProdServer } from "./lib/prod-server.mjs";
 
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|software|basic render/i;
 
-/** Reads the WebGL renderer the page actually gets (runs inside the browser). */
-function readWebGlInfo() {
+/** The GPU the captures ask for (the canvas's `?gpu=` override, and the renderer readout below). */
+const CAPTURE_GPU = "low-power";
+
+/** Reads the WebGL renderer a context with this powerPreference gets (runs inside the browser). */
+function readWebGlInfo(powerPreference) {
   const canvas = document.createElement("canvas");
-  const gl2 = canvas.getContext("webgl2");
-  const gl = gl2 ?? canvas.getContext("webgl");
+  const gl2 = canvas.getContext("webgl2", { powerPreference });
+  const gl = gl2 ?? canvas.getContext("webgl", { powerPreference });
   if (!gl) return { available: false, webgl2: false, vendor: null, renderer: null, version: null };
   const ext = gl.getExtension("WEBGL_debug_renderer_info");
   const info = {
@@ -136,15 +144,19 @@ async function main() {
           ...target.contextOptions,
         });
         const page = await context.newPage();
-        const url = new URL(target.path, server.origin).href;
+        const pageUrl = new URL(target.path, server.origin);
+        pageUrl.searchParams.set("gpu", CAPTURE_GPU);
+        const url = pageUrl.href;
         const response = await page.goto(url, { waitUntil: "load" });
-        await page.waitForLoadState("networkidle");
+        // At most 15 s: a page may never go quiet (the dev performance overlay keeps creating
+        // blob: URLs, PF-007); the target's own `prepare` then decides when it is ready.
+        await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
         await page.evaluate(() => document.fonts.ready);
         if (target.prepare) await target.prepare(page);
 
         const file = `${target.name}-${vp.name}.png`;
         const files = await capture(page, outDir, file, fullPage, vp);
-        const webgl = await page.evaluate(readWebGlInfo);
+        const webgl = await page.evaluate(readWebGlInfo, CAPTURE_GPU);
         captures.push({
           target: target.name,
           file: files.length === 1 ? files[0] : files,
@@ -160,6 +172,7 @@ async function main() {
           },
           timestamp: new Date().toISOString(),
           webgl: {
+            powerPreference: CAPTURE_GPU,
             ...webgl,
             gpu: webgl.available
               ? SOFTWARE_RENDERER.test(webgl.renderer ?? "")

@@ -11,6 +11,14 @@
 // transfers in Chromium (desktop and phone viewports), lazy images included.
 // Then the stage 1 stills (budgets.stills, PF-028): each master in public/media/stills/ as
 // next/image serves it at the largest size the layout uses, in AVIF and in WebP.
+// Then the 3D layer (PF-007, budgets.threeDChunk):
+//   - no route's first-load JS contains three.js or React Three Fiber;
+//   - where the build has the 3D layer (not the production deployment, D-39): the lazy 3D chunk –
+//     the JS files `/` loads in Chromium with `?tier=high` beyond those it loads with
+//     `?tier=static` – summed and gated at ≤ 400 KB gzip;
+//   - where it does not: no file in .next/static contains three.js, React Three Fiber or the loader;
+//   - the dev tools (leva, r3f-perf) are in no file of the build unless it was made with
+//     ENABLE_DEV_PAGES=1 (then they are reported, not gated).
 // Exit code 1 if anything is over its limit.
 
 import { readdir, readFile } from "node:fs/promises";
@@ -82,15 +90,49 @@ function scriptUrls(html) {
 
 const fmt = (bytes) => `${(bytes / KB).toFixed(1)} KB`;
 
+/** Strings that identify a package in built JavaScript (they survive minification). */
+const SIGNATURES = {
+  three: "__THREE__",
+  "react-three-fiber": "R3F: Hooks can only be used",
+  "journey loader": "journey-tier-floor",
+  leva: "leva__root",
+  "r3f-perf": "muiPerf",
+};
+const THREE_D = ["three", "react-three-fiber"];
+const DEV_TOOLS = ["leva", "r3f-perf"];
+
+/** Which signatures a file contains. */
+function signaturesIn(body) {
+  const text = body.toString("latin1");
+  return Object.entries(SIGNATURES)
+    .filter(([, sig]) => text.includes(sig))
+    .map(([name]) => name);
+}
+
+/** Every built JavaScript file and the signatures it contains. */
+async function scanStaticJs() {
+  const dir = path.join(ROOT, ".next", "static");
+  const files = (await readdir(dir, { recursive: true })).filter((f) => f.endsWith(".js"));
+  /** @type {Record<string, string[]>} name → files */
+  const found = Object.fromEntries(Object.keys(SIGNATURES).map((k) => [k, []]));
+  for (const f of files) {
+    for (const name of signaturesIn(await readFile(path.join(dir, f)))) found[name].push(f.replaceAll("\\", "/"));
+  }
+  return { count: files.length, found };
+}
+
 async function main() {
   const { routes, problems } = await discoverRoutes();
   const limit = budgets.firstLoadJs.gzipBytes;
   const server = await startProdServer();
-  /** @type {Map<string, { gzip: number, brotli: number, raw: number }>} */
+  /** @type {Map<string, { gzip: number, brotli: number, raw: number, hits: string[] }>} */
   const fileSizes = new Map();
   const rows = [];
   /** @type {Set<string>} */
   const polyfills = new Set();
+  let journeyBuilt = false;
+  /** @type {Awaited<ReturnType<typeof measureThreeDChunk>> | null} */
+  let chunk = null;
 
   /** Fetches one JS file once and returns its raw, gzip and Brotli sizes. */
   const measure = async (url) => {
@@ -100,6 +142,7 @@ async function main() {
       if (!jsRes.ok) throw new Error(`${url}: HTTP ${jsRes.status}`);
       const body = Buffer.from(await jsRes.arrayBuffer());
       sizes = {
+        hits: signaturesIn(body),
         raw: body.length,
         gzip: gzipSync(body).length,
         brotli: brotliCompressSync(body, {
@@ -127,11 +170,15 @@ async function main() {
         raw += sizes.raw;
         gzip += sizes.gzip;
         brotli += sizes.brotli;
+        const heavy = sizes.hits.filter((h) => THREE_D.includes(h));
+        if (heavy.length) problems.push(`${route.label}: first-load JS ${url} contains ${heavy.join(" and ")} (it may only load lazily)`);
       }
+      if (route.path === "/") journeyBuilt = html.includes("data-tier-backdrop");
       for (const url of noModuleUrls(html)) polyfills.add(url);
       rows.push({ label: route.label, files: files.length, raw, gzip, brotli, ok: gzip <= limit });
     }
     for (const url of polyfills) await measure(url);
+    if (journeyBuilt) chunk = await measureThreeDChunk(server.origin, measure);
   } finally {
     await server.stop();
   }
@@ -176,6 +223,10 @@ async function main() {
   printPageWeights(weights);
   printStills(stills);
 
+  const scan = await scanStaticJs();
+  const devPagesBuild = routes.some((r) => r.path.startsWith("/dev/"));
+  printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems });
+
   for (const p of problems) console.error(`ERROR: ${p}`);
   const over = rows.filter((r) => !r.ok);
   for (const r of over) console.error(`OVER BUDGET: ${r.label} is ${fmt(r.gzip)} gzip, limit ${fmt(limit)}`);
@@ -187,8 +238,85 @@ async function main() {
   for (const s of heavyStills) {
     console.error(`OVER BUDGET: ${s.file} served as ${s.problem ?? `AVIF ${fmt(s.avif)} / WebP ${fmt(s.webp)}`}, limit ${fmt(budgets.stills.maxServedBytes)}`);
   }
-  if (over.length || problems.length || heavy.length || heavyStills.length) process.exit(1);
+  const heavyChunk = !!chunk && chunk.gzip > budgets.threeDChunk.gzipBytes;
+  if (heavyChunk) console.error(`OVER BUDGET: the lazy 3D chunk is ${fmt(chunk.gzip)} gzip, limit ${fmt(budgets.threeDChunk.gzipBytes)}`);
+  if (over.length || problems.length || heavy.length || heavyStills.length || heavyChunk) process.exit(1);
   console.log("All routes within budget.");
+}
+
+/**
+ * The lazy 3D chunk: the JS files `/` loads with the canvas (`?tier=high`) that it does not load in
+ * the static tier (`?tier=static`) – same page, same viewport, so route prefetches cancel out.
+ * Playwright's default Chromium (SwiftShader is enough to start the canvas).
+ */
+async function measureThreeDChunk(origin, measure) {
+  const browser = await chromium.launch();
+  const scriptsFor = async (query) => {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    const urls = new Set();
+    page.on("response", (res) => {
+      if (res.request().resourceType() === "script" && res.url().startsWith(origin)) urls.add(res.url().slice(origin.length));
+    });
+    await page.goto(`${origin}/${query}`, { waitUntil: "load" });
+    const done = await page
+      .waitForFunction(() => window.__journey?.ready === true || window.__journey?.state().tier === "static", null, { timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(500);
+    const state = await page.evaluate(() => window.__journey?.state() ?? null);
+    await context.close();
+    return { urls, done, state };
+  };
+  try {
+    const base = await scriptsFor("?tier=static");
+    const canvas = await scriptsFor("?tier=high");
+    if (!canvas.done || canvas.state?.tier !== "high") {
+      return { files: [], gzip: 0, brotli: 0, raw: 0, error: `the canvas did not start with ?tier=high (tier: ${canvas.state?.tier ?? "none"}, reason: ${canvas.state?.reason ?? "–"})` };
+    }
+    const files = [...canvas.urls].filter((u) => !base.urls.has(u)).sort();
+    const rows = [];
+    for (const url of files) rows.push({ url, ...(await measure(url)) });
+    const sum = (k) => rows.reduce((t, r) => t + r[k], 0);
+    const hasThree = rows.some((r) => r.hits.includes("three"));
+    return { files: rows, gzip: sum("gzip"), brotli: sum("brotli"), raw: sum("raw"), error: hasThree ? null : "no lazily loaded file contains three.js" };
+  } finally {
+    await browser.close();
+  }
+}
+
+function printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems }) {
+  console.log("3D layer (PF-007, STANDARDS.md §3: lazy 3D chunk ≤ 400 KB gzip; never in first-load JS)\n");
+  const where = (name) => (scan.found[name].length ? scan.found[name].join(", ") : "–");
+  if (journeyBuilt) {
+    if (!chunk || chunk.error) {
+      problems.push(`3D chunk: ${chunk?.error ?? "not measured"}`);
+    } else {
+      console.log(`Lazy 3D chunk (loaded by / after the page is interactive), ${chunk.files.length} file(s):`);
+      for (const f of chunk.files) console.log(`  ${f.url}  ${fmt(f.gzip)} gzip, ${fmt(f.brotli)} Brotli, ${fmt(f.raw)} raw  [${f.hits.join(", ") || "scene code"}]`);
+      const limit = budgets.threeDChunk.gzipBytes;
+      console.log(`  Total: ${fmt(chunk.gzip)} gzip (gated, ≤ ${fmt(limit)}: ${chunk.gzip <= limit ? "ok" : "OVER"}), ${fmt(chunk.brotli)} Brotli, ${fmt(chunk.raw)} raw`);
+    }
+  } else {
+    console.log("This build has no 3D layer (the production deployment before PF-026, D-39).");
+    const names = [...THREE_D, "journey loader"];
+    for (const name of names) {
+      if (scan.found[name].length) problems.push(`D-39: ${name} found in a build without the 3D layer: ${where(name)}`);
+    }
+    console.log(`  In .next/static (${scan.count} JS files): ${names.map((n) => `${n} ${scan.found[n].length ? "FOUND" : "absent"}`).join(", ")}`);
+  }
+  console.log("  three.js / React Three Fiber in any route's first-load JS: none (an ERROR line lists any found)");
+  const devFound = DEV_TOOLS.filter((n) => scan.found[n].length);
+  if (devPagesBuild) {
+    console.log(`  Dev tools (leva, r3f-perf): ENABLE_DEV_PAGES=1 build, present by design: ${devFound.map((n) => `${n} in ${where(n)}`).join("; ") || "none found"} (not gated)`);
+  } else {
+    console.log(`  Dev tools (leva, r3f-perf) in the build's chunks (${scan.count} JS files searched): ${devFound.length ? "FOUND" : "absent"}`);
+    for (const n of devFound) problems.push(`dev tool ${n} found in a build without dev tools: ${where(n)}`);
+  }
+  console.log("");
 }
 
 /**

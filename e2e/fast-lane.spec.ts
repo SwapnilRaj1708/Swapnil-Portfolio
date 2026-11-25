@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./fixtures";
 import { experience, education, skills, services } from "../src/content/data/career";
 import { about, identity } from "../src/content/data/identity";
 import { projects } from "../src/content/data/projects";

@@ -5,7 +5,7 @@ Outline only. Each section is filled in by the item that builds it.
 ## 1. Architecture
 
 ### DOM first
-Every page is server-rendered HTML inside one shell (`src/components/layout/site-shell.tsx`, used by the root layout): skip link → sticky header (name, persistent navigation, "Simple view" switch) → the one `main` landmark (`id="main"`) → footer (email, GitHub, LinkedIn, copyright). Text and controls live only in the DOM, styled with the design tokens in `src/app/globals.css`. The canvas (PF-007) will sit behind this layer. The client components are the navigation (mobile menu), the switch and the contact flow (PF-019, below). Below `lg` the header keeps the `quick` links (Work, Resume) next to the menu button, so they are one tap away on every page (BRIEF §2); the other links sit behind the menu. Without JavaScript the navigation is shown as a plain list (`noscript:` = `@media (scripting: none)`) and the switch is hidden. All text comes from the content model (below).
+Every page is server-rendered HTML inside one shell (`src/components/layout/site-shell.tsx`, used by the root layout): skip link → sticky header (name, persistent navigation, "Simple view" switch) → the one `main` landmark (`id="main"`) → footer (email, GitHub, LinkedIn, copyright). Text and controls live only in the DOM, styled with the design tokens in `src/app/globals.css`. The canvas (PF-007, "One persistent canvas" below) sits behind this layer, where the build has it. The client components are the navigation (mobile menu), the switch and the contact flow (PF-019, below). Below `lg` the header keeps the `quick` links (Work, Resume) next to the menu button, so they are one tap away on every page (BRIEF §2); the other links sit behind the menu. Without JavaScript the navigation is shown as a plain list (`noscript:` = `@media (scripting: none)`) and the switch is hidden. All text comes from the content model (below).
 
 ### Routes (PF-006, BRIEF §5)
 All are prerendered at build (Cache Components on) and readable with JavaScript off. None needs WebGL.
@@ -60,8 +60,106 @@ The icons and the manifest follow Next's file conventions in `src/app/`:
 
 The root layout's `viewport.themeColor` is the same colour. These places cannot read CSS variables, so they take the hex values from `src/styles/palette.ts`. `palette.test.ts` keeps that file equal to the tokens in `globals.css`.
 
-### One persistent canvas
-_To be filled in._
+### One persistent canvas (PF-007)
+
+**The journey switch (D-39).** `src/config/journey.ts`. The 3D layer is built in when the build is **not** the Vercel production deployment, or when `JOURNEY_LAUNCHED` is `true`. It is `false` until PF-026 flips it at the stage 2 launch. So previews, local builds and the dev server get the canvas, and swapnilraj.in keeps the stage 1 home exactly.
+
+The decision is made at build time. `next.config.ts` inlines three flags into every bundle, server and browser, through its `env` setting (`journeyBuildEnv`):
+
+| Flag | "on" when |
+|---|---|
+| `JOURNEY_LAYER` | the 3D layer is built in (the rule above) |
+| `JOURNEY_TIER_OVERRIDE` | the layer is on and the build is not the production deployment: the `?tier=` override and the `window.__journey` debug hooks |
+| `JOURNEY_DEV_TOOLS` | the layer is on and the build is `next dev` or has `ENABLE_DEV_PAGES=1`: the tuning panel and the performance overlay |
+
+Code that imports the 3D layer tests the flag in place: `src/components/journey/gate.tsx` imports the loader and the hero's tier backdrop inside `if (process.env.JOURNEY_LAYER === "on")`, and `scene/journey-canvas.tsx` imports the dev tools the same way. Where a flag is "off", that branch is dead code. The bundler drops the import, so the module is in no chunk. The server components (`SiteShell`, `HeroSection`, `HomeSection`, the root layout) render the journey parts only when the flag is on. A production build is therefore the stage 1 page in its markup too: the hero keeps `bg-background` and its server-rendered still. `npm run size` searches every built chunk and fails if three.js, React Three Fiber or the loader turn up in a build without the layer. Unit tests never go through `next.config`, so they see the flags as unset (= off, the production page) unless a test stubs one.
+
+**Measured (PF-007).**
+
+- **The lazy 3D chunk:** one file, 245.7 KB gzip (200.9 KB Brotli, 931.2 KB raw; limit 400 KB). three.js and React Three Fiber are in no route's first-load JS.
+- **First-load JS of `/`:** 161.4 KB gzip with the layer, 158.5 KB in a production build. Main's production build of `/` was 157.2 KB: the +1.3 KB on every route is the inert gate module and `next/dynamic`.
+- **Production HTML:** the prerendered home, `/work`, a case study, `/resume`, the 404 and a contact result are identical to main's, scripts and hashes aside, except for the Simple-view knob fix below.
+
+**The layer.** `src/components/journey/journey-layer.tsx` (client, loaded with `next/dynamic` and `ssr: false`, rendered by `SiteShell` after the footer). It is mounted once, so it survives client navigations. Its host is `<div aria-hidden="true" data-journey-host>`: fixed, the full viewport, `-z-10`, `pointer-events: none`. The canvas inside has no tab stop. The host fades in (`opacity`, `duration-slow`) once the first frame is drawn, and only while a see-through section is in view.
+
+With the layer built in, `body` is `isolate`. Otherwise `body`'s own background would paint over a layer below z-index 0. Every home section except the hero gets `bg-background` (the colour behind it anyway), so the canvas shows through the hero only. The header stays solid.
+
+The order of events:
+
+1. **After hydration, the cheap checks**, all synchronous: the `?tier=` override (only where allowed), simple view, reduced motion, data saver, the session's context-loss and low-tier-failure flags, a failed chunk, then a WebGL 2 probe on a throwaway canvas (no WebGL 2, a software renderer). Any static trigger ends here: no canvas and no download (see "Static triggers" in §2). The order and the override's bypasses are one pure function, `decideTier` in `src/lib/journey/tiers.ts`.
+2. **The start tier** goes into the tier store. The chunk is then imported only when three things hold: the `load` event has fired, the browser is idle (`requestIdleCallback`, 2 s timeout) and the page has a see-through section. So `/work` and `/resume` never download it, and a client navigation to `/` loads it then. The chunk is `src/components/journey/scene/journey-canvas.tsx` with three.js and React Three Fiber. It is a plain dynamic `import()`, so a failure is caught: static tier, no error overlay.
+3. **The canvas** renders the scene and fades in.
+
+Performance marks: `journey:checks`, `journey:decided` (the tier is in the store), `journey:chunk-request`, `journey:chunk-loaded`.
+
+**What a static visitor downloads.** Before the decision the page has loaded only the first-load JS of the route (the loader itself is a small chunk `next/dynamic` requests after hydration; it holds the tier rules, the probe and the tier store) plus the document, stylesheet and fonts. The probe creates two throwaway WebGL contexts at most, which download nothing. three.js, React Three Fiber and the scene are never requested. `e2e/journey.spec.ts` prints the resource list up to `journey:decided` as `[journey detection]`.
+
+**The hero is the canvas's window.** `HeroSection` passes its backdrop (the Port still and its scrims) to `TierBackdrop` (`src/components/journey/tier-backdrop.tsx`):
+
+- In the static tier it draws the backdrop: eager, high priority, on a `bg-background` box, the stage 1 hero.
+- Before the tier is known (server render, hydration) and on every render tier, the backdrop sits inside `<noscript>`. Browsers with JavaScript never parse it, so the still is not even downloaded. Browsers without JavaScript draw it exactly as in stage 1.
+- The tier backdrop registers its section with the view store: mounted (the chunk may load) and intersecting (the canvas may render).
+
+In a static tier caused by a trigger, the still therefore starts loading just after hydration, not with the HTML (in previews; production is unchanged).
+
+**Renderer** (STANDARDS §4, D-14, D-29). WebGL 2 through three's `WebGLRenderer`, via React Three Fiber's `<Canvas>`:
+
+- sRGB output and `NeutralToneMapping` (Khronos PBR Neutral, provisional until PF-011);
+- `alpha: false`, cleared to `background`;
+- no shadows;
+- antialiasing on the high and medium tiers. It is fixed when the context is created, so it follows the start tier;
+- the pixel ratio capped per tier: 2 / 1.5 / 1;
+- `powerPreference: "high-performance"` for visitors (owner decision on PF-007): on a dual-GPU machine the browser may use the discrete GPU. `?gpu=low-power` asks for the integrated, low-power GPU instead. It is a testing override like `?tier=`: honoured only where `JOURNEY_TIER_OVERRIDE` is on, never on the production deployment (`chooseGpuPreference` in `tiers.ts`, unit-tested). The numbers script and review:shots always add it, so D-40 benchmarks stay on the reference laptop's integrated AMD Radeon. The WebGL probe asks for the same preference, so it reads the renderer the canvas will get. The preference is fixed when the context is created.
+
+**The test object** (`scene/test-object.tsx`) is plumbing, not a look. It is a bevelled chip in `surface` (PBR, metalness 0.45, roughness 0.45) with one trace-amber emissive strip, a hemisphere fill and a cool directional key (2 lights). Colours come from `src/styles/palette.ts`.
+
+It sits outside the text-safe area (`scene/layout.ts`, unit-tested):
+
+- **wide:** centred at 75 % of the width and spanning at most 55–95 %. The hero copy column can reach ~52 % on a 4:3 window;
+- **portrait:** centred at 70 % of the height and spanning at most 55–85 %.
+
+`e2e/journey.spec.ts` projects its bounding sphere to the screen and checks it never overlaps the hero copy's line boxes at six desktop sizes and on the phone. It prints `[object bounds]`.
+
+The canvas clears to `background`, so the hero copy always stands on the background colour. Its pairs are in `src/styles/contrast-pairs.ts`. The status chip and the links stand on their own surfaces.
+
+The object owns its geometries and materials and disposes them in its own effect cleanup. That cleanup runs before R3F releases the renderer, so three.js frees their programs while it still tracks them. R3F disposes removed objects later, on idle, after its renderer teardown.
+
+**Frame loop** (`FrameDriver` in `journey-canvas.tsx`, bookkeeping in `scene/frame-loop.ts`). It takes over rendering (`useFrame` priority 1) and draws once per frame. It measures the frame interval and the frame's CPU time and feeds the downgrade monitor. It allocates nothing, reads no layout and sets no React state. Rare events leave the loop through a timer: the first frame, a downgrade, a low-tier failure, a finished sample.
+
+**Pause rules** (STANDARDS §4). Frames are rendered only while both hold:
+
+- the page is visible (Page Visibility);
+- a see-through section intersects the viewport (IntersectionObserver on the hero).
+
+Otherwise R3F's loop is set to `"never"`. Scrolled past the hero, or on `/work` after a client navigation, the canvas is fully covered: no frames, and the host fades out. On resume the downgrade monitor starts over, because the first interval spans the pause. The tests count frames through `window.__journey.frames`.
+
+**Context loss.** `ContextLossWatch` in `journey-canvas.tsx`:
+
+- **First loss in a session:** it calls `preventDefault()` so the browser may restore the context. three.js re-uploads the scene on `webglcontextrestored`.
+- **Second loss, or no restore within 5 s:** the session goes static for good. The count is kept in sessionStorage (`journey-context-losses`).
+
+**Disposal.** Turning simple view on (or any later static trigger) unmounts the canvas. R3F then disposes the scene, disposes the renderer and forces the context to be lost. `window.__journey.lastRelease` records what the renderer still holds after that. The e2e test requires geometries, textures and programs all at 0, and the context lost.
+
+**Dev tuning panel and performance overlay** (STANDARDS §5). `scene/dev-tools.tsx` holds a leva panel over the test object's tunables (`scene/test-object.tuning.ts`): rotation speed, emissive intensity, key and fill light. Its "Export values" button copies them as JSON and logs them to the console. It also renders r3f-perf's `<Perf />`, at the bottom right.
+
+Placement: leva's own panel is fixed at the top right, where it covered the end of the desktop navigation (Resume, the Simple-view switch). `DevPanel` (same module) mounts the panel itself as `<Leva titleBar={{ position }} />` (a mounted `<Leva>` replaces the panel leva would add on its own), portalled to `<body>` because the canvas host is `aria-hidden`, behind the page and takes no pointer events. The position moves it down by the header's bottom edge, measured once, so it starts 10 px below the header. The hero copy sits in the left column, so at 1440 × 900 and 1920 × 1080 the panel covers no navigation and no hero text. It can still be dragged by its title bar.
+
+These are present only in builds where `JOURNEY_DEV_TOOLS` is "on": `next dev`, and builds with `ENABLE_DEV_PAGES=1`, which is never set on Vercel. Elsewhere the import is dead code. `npm run size` searches the built chunks for both packages and fails if found.
+
+They show at once under `next dev`. In an `ENABLE_DEV_PAGES=1` build they show only with `?tune` in the URL. A machine whose `.env` sets that flag builds every local build with it, and the panel would otherwise cover the header in tests, captures and frame-time numbers.
+
+**Debug hooks.** `window.__journey` (`src/lib/journey/debug.ts`) exists only where the override is allowed. It offers the store state, frames, first-frame flag, scene stats (including the canvas context's renderer and `powerPreference`), frame sampling, the object's screen bounds, the last release, a `loadMs` busy-wait for forcing a downgrade in tests, and `simulatedFrameMs`: when above 0, the downgrade monitor sees that interval instead of the measured one, so a test can make frames look slow without slowing the machine (the low-tier failure test uses it).
+
+**Numbers script** (`npm run numbers -- <ID> [stops…] [--headless]`, `scripts/numbers.mjs`, STANDARDS §8). It builds and serves the site, then opens full Chromium on the real GPU, headed by default (the review:shots launch method, never the headless shell). Each stop in `NUMBER_STOPS` (`scripts/review/targets.mjs`; PF-008 adds chapter stops) is loaded with `?tier=high`, `medium` and `low`, plus "medium (throttled)": high with CDP CPU throttling 4×. Each of these measured runs adds `?gpu=low-power` (D-40: the integrated GPU). One more run, "visitor default (high-performance)", loads `?tier=high` without it: information only, not judged against a budget, so the report shows which GPU a visitor's canvas gets on this machine. After a 3 s warm-up it samples 10 s and records:
+
+- draw calls, triangles, geometries, textures and the estimated texture memory;
+- frame interval and CPU time, p50 / p95 / p99;
+- the tier actually active and the pixel ratio;
+- the `powerPreference` the canvas context was created with and the renderer it actually got (read from the canvas's own context).
+
+It writes `.review/<ID>/numbers.json` and `numbers.md` with the WebGL renderer (hardware or software), the visitor-default run's renderer and whether it is the same GPU, and the machine: `Win32_ComputerSystem` manufacturer and model, CPU, memory, `Win32_VideoController` names. It warns loudly if the measured runs' renderer does not name AMD (D-40: the reference laptop is measured on its integrated Radeon).
+
+Headed Chromium paces animation frames to the display, so the frame intervals are vsync-capped: multiples of the refresh interval. The CPU time per frame shows the headroom under that cap.
 
 ### Native scroll
 _To be filled in._
@@ -105,7 +203,16 @@ The email: to the public address in `identity.email`, from `CONTACT_EMAIL_FROM` 
 ## 2. Quality tiers and fallbacks
 
 ### Tiers: high, medium, low, static
-_High, medium and low: to be filled in (PF-007)._
+The tier lives in one small store: `src/lib/journey/store.ts`, vanilla zustand. The frame loop reads it with `getState()` and never causes a React render. It holds the tier (`pending` until the checks run, then `high`, `medium`, `low` or `static`), the reason, whether `?tier=` forced it, and the history of changes. All the rules are pure functions in `src/lib/journey/tiers.ts`, unit-tested with the signals as input. The browser reads in `src/lib/journey/signals.ts` are each guarded, so a missing API reads as "no signal".
+
+| Tier | Pixel ratio cap | Frame-time p95 limit | Today (PF-007) |
+|---|---|---|---|
+| high | 2 | 16.7 ms | the test object, antialiased |
+| medium | 1.5 | 20 ms | the same, antialiased |
+| low | 1 | 33 ms | fewer curve and bevel segments, no antialiasing |
+| static | – (no canvas) | – | the stage 1 home |
+
+Chapters (PF-008 on) state what each tier gets.
 
 ### Static tier: the stage 1 home (PF-028)
 The `static` tier is the home page as it is now: no canvas, the same DOM, and Blender stills where the 3D scene will be. It is also the stage 1 launch page (D-26), so none of it is throwaway. The hero stands on the Port still. Every other section opens on a banner of its chapter's still (Bus, Memory Banks, Render Array, Core, Uplink), with the mono index label and the h2 in the banner's bottom-left corner. The stills are encoded by `npm run media:stills` and listed in `docs/assets.md` and `src/content/data/stills.ts`.
@@ -145,13 +252,62 @@ The areas are in `src/styles/stills.ts` (`textArea`). `e2e/stills.spec.ts` maps 
 The banners' boxes keep the image's proportions (cropped only on the side away from the text), so the test may count their scrim. The hero's box changes shape with the window, so its text must pass on the image alone. It does: 13.8:1 and 5.5:1 at worst, the scrims are extra margin. The social image's text area (left half) is checked the same way.
 
 ### Choosing and lowering the tier
-_To be filled in._
+
+**Start tier** (`chooseStartTier`), once WebGL 2 on a hardware renderer is known to be there (a software renderer is a static trigger, below):
+
+| Signal | Start tier |
+|---|---|
+| a phone: coarse pointer, screen's short side < 600 px | low |
+| a tablet: coarse pointer | medium |
+| `navigator.deviceMemory` ≤ 4 GB, or `hardwareConcurrency` ≤ 4 | medium |
+| otherwise | high |
+
+The session's floor caps it: the tier never starts above a tier it was lowered to.
+
+detect-gpu (the item allowed it) is **not** used. It would add a benchmark download per visit, served from the site (STANDARDS §4). And on the reference laptop Chrome reports a generic "AMD Radeon(TM) Graphics" that covers every Ryzen iGPU generation, so a benchmark lookup adds little over the frame-time downgrade, which measures the actual device.
+
+**Lowering on measured frame time** (`src/lib/journey/frame-monitor.ts`, unit-tested):
+
+- After a 2 s warm-up, the monitor keeps the last 120 frame intervals. Every 30 frames it takes their 95th percentile, nearest rank, sorted in place in a preallocated array, so the frame loop allocates nothing.
+- When the p95 stays above the tier's limit × 1.1 for 3 s of frame time, the tier drops **one** step. The new tier's limit applies and the monitor warms up again.
+- One interval is clamped at 250 ms, so a single stall cannot dominate.
+- `low` is the lowest render tier. **At `low`, a sustained failure ends the canvas**: when the p95 stays above low's limit × 1.1 (33 ms → 36.3 ms) for 5 s of frame time (`LOW_FAILURE_SUSTAIN_MS`, after the same warm-up and full window), the session goes static for good (owner decision on PF-007). `failAtLow()` in the store records it in sessionStorage (`journey-low-failed`, try/catch; in memory when storage throws) and sets the static tier with the reason `low-failed`; the canvas unmounts and the hero draws its still. Every later check in the session finds the flag before probing WebGL. The × 1.1 is the same jitter tolerance as the downgrade's: at 60 Hz a device that holds 30 fps measures ~33.3 ms, which is within low's budget and must not count as a failure.
+- The floor is stored in sessionStorage (`journey-tier-floor`, try/catch; in memory when storage throws). A tier never climbs back within the visit: not after the load passes, not after simple view is toggled, not after a reload in the same tab.
+- A `?tier=` tier is pinned: never lowered, never ended by the low-tier failure, and it ignores the floor.
+
+Why × 1.1: rAF intervals are quantised by the display. At 60 Hz a scene that keeps up measures ~16.7 ms with timer jitter around it. A p95 above 18.4 ms means at least one frame in twenty missed the refresh. At 60 Hz, medium's 20 ms behaves the same way (frames are either ~16.7 or ~33.3 ms), and low's 33 ms × 1.1 means frames regularly miss two refreshes. `e2e/journey.spec.ts` forces a drop by adding 60 ms of work per frame (`__journey.loadMs`). It checks that the tier goes from high to medium, stays there when the load stops, and a reload starts at the floor. The low-tier failure is tested with simulated frame times (`__journey.simulatedFrameMs = 60`, the machine is not slowed): from an automatic `low` the session goes static with the reason `low-failed`, a reload stays static without requesting the chunk, and `?tier=low` still gets the canvas. Both tests pretend a hardware GPU (an init script), since the browser under test is SwiftShader.
+
+**Overrides** (testing, review captures, the numbers script), honoured only where `JOURNEY_TIER_OVERRIDE` is on, never on the production deployment, where the query is not even parsed:
+
+- `?tier=static` forces the static tier.
+- `?tier=high|medium|low` forces (pins) a render tier. It **bypasses** the software-renderer trigger, the session's low-tier failure, the frame-time downgrade and the session floor, so tests and CI can run the canvas on SwiftShader. It does **not** bypass "no WebGL 2" (there is nothing to render with: static, quietly, no error) nor the visitor's own choices and the other triggers: simple view, reduced motion, data saver, context lost twice, a failed chunk.
+- `?gpu=low-power` asks the canvas for the integrated GPU (see "Renderer" in §1). Visitors get `"high-performance"`.
+
+`decideTier` in `tiers.ts` holds the whole order and is unit-tested for every bypass, including that nothing is bypassed when the override is not allowed.
+
+### Static triggers
+Each one gives the stage 1 home exactly: no canvas, no 3D chunk request, the hero still drawn, no console or page error (`e2e/journey.spec.ts`, desktop and phone). The cheap, synchronous checks run before anything is downloaded, in this order (`findStaticReason`, then the probe; `decideTier` puts them together):
+
+| Trigger | Detected by | Remembered |
+|---|---|---|
+| "Simple view" chosen | `getSimpleView()` (localStorage `simple-view`) | across visits (localStorage) |
+| Reduced motion | `matchMedia("(prefers-reduced-motion: reduce)")`, watched | the browser setting |
+| Data saver | `navigator.connection.saveData` | the browser setting |
+| Graphics context lost twice | sessionStorage `journey-context-losses` ≥ 2 | the session |
+| The 3D chunk failed to load | a rejected `import()` | this page (a reload tries again) |
+| Frame time failed at `low` | p95 > 33 ms × 1.1 for 5 s while on an automatic `low` (above) | the session (sessionStorage `journey-low-failed`) |
+| No WebGL 2 | `canvas.getContext("webgl2")` on a throwaway canvas (released at once) | – |
+| A software renderer | the same probe: the unmasked renderer (`WEBGL_debug_renderer_info`) matches SwiftShader, llvmpipe, softpipe, "Software" or "Basic Render" (`SOFTWARE_RENDERER_PATTERNS` in `tiers.ts`), or the browser refuses a context with `failIfMajorPerformanceCaveat: true` (the WebGL context attribute; three r187's `WebGLRenderer` also takes it as a parameter, default `false`, and passes it to `getContext`; the canvas leaves it off, so the probe alone makes the check) and gives one without it | – (checked on every visit) |
+
+A trigger that fires later (the chunk fails, the context is lost twice, simple view or reduced motion turned on) unmounts the canvas. The hero then draws its still. Turning simple view or reduced motion off runs the checks again, subject to the other triggers and the floor.
 
 ### "Simple view" switch
-A toggle button (`aria-pressed`) in the navigation: `src/components/layout/simple-view-switch.tsx`. The choice lives in a tiny store with no React dependency, `src/lib/simple-view.ts` (`getSimpleView`, `setSimpleView`, `subscribeSimpleView`), remembered in `localStorage` under `simple-view` (`"on"`/`"off"`); every storage access is in try/catch, so a throwing storage keeps the choice for the visit only. Other tabs follow through the `storage` event. React reads it with `useSimpleView()` (`src/lib/use-simple-view.ts`, `false` on the server and during hydration). PF-007 makes "on" select the static tier.
+A toggle button (`aria-pressed`) in the navigation: `src/components/layout/simple-view-switch.tsx`. The choice lives in a tiny store with no React dependency, `src/lib/simple-view.ts` (`getSimpleView`, `setSimpleView`, `subscribeSimpleView`), remembered in `localStorage` under `simple-view` (`"on"`/`"off"`). Every storage access is in try/catch, so a throwing storage keeps the choice for the visit only. Other tabs follow through the `storage` event. React reads it with `useSimpleView()` (`src/lib/use-simple-view.ts`, `false` on the server and during hydration).
+
+"On" selects the static tier (PF-007): the canvas unmounts and everything on the GPU is freed. "Off" runs the tier checks again. PF-007 also fixed the switch's knob: two class names had run together since PF-005, so it never moved or lit up when on (regression test in `simple-view-switch.test.tsx`).
 
 ### Reduced motion
-_To be filled in._
+`prefers-reduced-motion: reduce` is a static trigger: no canvas, no camera travel, no smoothing, no parallax (STANDARDS §2). The loader watches the media query, so changing the setting during a visit applies at once. The stylesheet's rule stays as it was: only opacity may transition, animations stop. In the static tier nothing else moves.
 
 ### Per-chapter tier behaviour
 _To be filled in._

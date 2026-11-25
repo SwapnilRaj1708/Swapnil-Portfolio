@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { NOINDEX_DIRECTIVE, SITE_PUBLIC, SITE_URL } from "../src/config/site";
 import { projects } from "../src/content/data/projects";
 

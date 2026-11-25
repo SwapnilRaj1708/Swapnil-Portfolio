@@ -38,6 +38,12 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { fg: "text-muted", bg: "background", use: "contact flow: text field border", kind: "non-text" },
   { fg: "accent-trace", bg: "background", use: "contact flow: border of a field with an error", kind: "non-text" },
   { fg: "accent-signal", bg: "surface", use: "contact flow: progress bar, steps done", kind: "non-text" },
+  // PF-007: the hero over the 3D canvas. The canvas clears to the background colour and the test
+  // object is kept out of the hero copy (scene/layout.ts; e2e/journey.spec.ts checks its bounds on
+  // screen), so the copy's text always stands on the background colour; the status chip and the
+  // two links stand on their own surfaces (pairs above). The header stays solid background.
+  { fg: "text", bg: "background", use: "hero name and pitch over the 3D canvas", kind: "text" },
+  { fg: "text-muted", bg: "background", use: "hero role and place over the 3D canvas", kind: "text" },
 ];
 
 export const MIN_RATIO = { text: 4.5, "non-text": 3 } as const;
