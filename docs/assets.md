@@ -38,3 +38,15 @@ Date of all files: 2026-11-24.
 Stills files live in `public/media/stills/`. Their sizes and paths are in the content data (`src/content/data/stills.ts`), and `next build` checks them against the files. To replace a still: render it in Blender, run `npm run media:stills`, then `npm test`. The contrast test samples the new file. Then `npm run size`.
 
 Not used: `icon-mark-64.png` (the favicon is made from the 1024 px transparent mark).
+
+## Project images (stand-ins, PF-006)
+
+Screenshots of each project's public live homepage, captured by `npm run media:capture` (`scripts/capture-project-media.mjs`: full Chromium, 1440 × 900, first screen, no login) on 2026-11-23. Marked `provisional: true` in `src/content/data/projects.ts` until the owner's media arrives (`docs/content.md`). Softboard Lite, LetsChat and Recall have no public preview (behind sign-in) and show a readout tile instead. Served by next/image (AVIF, else WebP, quality 75) at the sizes in `src/components/projects/image-sizes.ts`.
+
+| Slug | File | Dimensions | Bytes in repo | Alt text | Where used | Rights |
+|---|---|---|---|---|---|---|
+| `twizzr` | `public/media/projects/twizzr/home.webp` | 1440 × 900 | 77 164 | Homepage of Twizzr | `/`, `/work`, `/work/twizzr` | EL Nova Labs' site; shown with the owner's clearance (BRIEF §8) |
+| `pg-gurukul` | `public/media/projects/pg-gurukul/home.webp` | 1440 × 900 | 60 548 | Homepage of PG Gurukul | `/`, `/work`, `/work/pg-gurukul` | Client site (via EL Nova Labs); shown with the owner's clearance |
+| `creo` | `public/media/projects/creo/home.webp` | 1440 × 900 | 74 574 | Homepage of CREO | `/`, `/work`, `/work/creo` | Client site (freelance); shown with the owner's clearance |
+| `engineerhub` | `public/media/projects/engineerhub/home.webp` | 1440 × 900 | 45 556 | Homepage of the EngineerHUB website | `/`, `/work`, `/work/engineerhub` | EngineerHUB's site; shown with the owner's clearance |
+| `windows-10-clone` | `public/media/projects/windows-10-clone/home.webp` | 1440 × 900 | 26 094 | Homepage of Windows 10 Clone | `/work`, `/work/windows-10-clone` | The owner's personal project |

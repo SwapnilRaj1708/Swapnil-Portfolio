@@ -27,7 +27,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const project = getProject((await params).slug);
   if (!project) return { title: site.meta.notFound.title, description: site.meta.notFound.description };
-  return { title: project.name, description: project.oneLine };
+  return { title: project.name, description: project.oneLine, alternates: { canonical: `/work/${project.slug}` } };
 }
 
 function Block({ id, heading, children }: { id: string; heading: string; children: ReactNode }) {

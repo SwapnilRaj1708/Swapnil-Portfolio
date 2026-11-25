@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { NOINDEX_DIRECTIVE, SITE_LAUNCHED } from "../src/config/site";
+import { NOINDEX_DIRECTIVE, SITE_PUBLIC, SITE_URL } from "../src/config/site";
 import { projects } from "../src/content/data/projects";
 
 // Every page route of the site. PF-006 built /work and /resume, so no route is allowed to 404
@@ -43,16 +43,67 @@ test.describe("every route", () => {
   }
 });
 
-test("sends the robots header that matches the launch switch", async ({ page }) => {
-  for (const route of ["/", "/work", "/resume"]) {
-    const response = await page.goto(route);
-    const header = response?.headers()["x-robots-tag"];
-    if (SITE_LAUNCHED) {
-      expect(header).toBeUndefined();
-    } else {
-      expect(header).toBe(NOINDEX_DIRECTIVE);
+// The launch switch (src/config/site.ts): the build under test is public only when it was made as
+// the Vercel production deployment (VERCEL_ENV=production); the web server and this file share
+// the environment, so SITE_PUBLIC here is the build's state. A normal local or CI run is not public.
+test.describe(`launch switch as built (${SITE_PUBLIC ? "public" : "not public"})`, () => {
+  test("robots header and meta tag match", async ({ page }) => {
+    for (const route of ["/", "/work", "/work/twizzr", "/resume"]) {
+      const response = await page.goto(route);
+      const header = response?.headers()["x-robots-tag"];
+      const meta = page.locator('meta[name="robots"]');
+      if (SITE_PUBLIC) {
+        expect(header).toBeUndefined();
+        await expect(meta).toHaveCount(0);
+      } else {
+        expect(header).toBe(NOINDEX_DIRECTIVE);
+        await expect(meta).toHaveAttribute("content", "noindex, nofollow");
+      }
     }
-  }
+  });
+
+  test("robots.txt matches", async ({ request }) => {
+    const body = await (await request.get("/robots.txt")).text();
+    if (SITE_PUBLIC) {
+      expect(body).toMatch(/Allow: \/\s/);
+      expect(body).not.toMatch(/Disallow/);
+      expect(body).toContain(`Sitemap: ${SITE_URL}/sitemap.xml`);
+    } else {
+      expect(body).toMatch(/Disallow: \/\s/);
+      expect(body).not.toMatch(/Sitemap/);
+    }
+  });
+
+  test("every page has its own canonical link on the site's address", async ({ page }) => {
+    const pages = ["/", "/work", ...projects.map((p) => `/work/${p.slug}`), "/resume"];
+    for (const route of pages) {
+      await page.goto(route);
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", route === "/" ? SITE_URL : `${SITE_URL}${route}`);
+    }
+  });
+
+  test("social image URLs use the site's address", async ({ page }) => {
+    await page.goto("/work");
+    const og = await page.locator('meta[property="og:image"]').first().getAttribute("content");
+    expect(og).toMatch(new RegExp(`^${SITE_URL.replaceAll(".", "\\.")}/work/opengraph-image`));
+  });
+});
+
+test("the sitemap lists every public page and nothing else", async ({ request }) => {
+  const response = await request.get("/sitemap.xml");
+  expect(response.status()).toBe(200);
+  const locs = [...(await response.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  expect(locs).toEqual([
+    SITE_URL,
+    `${SITE_URL}/work`,
+    ...[...projects].sort((a, b) => a.order - b.order).map((p) => `${SITE_URL}/work/${p.slug}`),
+    `${SITE_URL}/resume`,
+  ]);
+});
+
+test("the 404 page has no canonical link", async ({ page }) => {
+  await page.goto("/this-route-does-not-exist");
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
 });
 
 test("an unknown route returns 404", async ({ page }) => {

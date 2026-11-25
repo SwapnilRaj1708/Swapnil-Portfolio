@@ -38,7 +38,11 @@ describe("/contact/result/<status> (plain form without JavaScript)", () => {
   });
 
   it("has a title and description per result; an unknown status is a 404", async () => {
-    expect(await generateMetadata(params("sent"))).toEqual({ title: r.sentTitle, description: r.sentBody });
+    expect(await generateMetadata(params("sent"))).toEqual({
+      title: r.sentTitle,
+      description: r.sentBody,
+      alternates: { canonical: "/contact/result/sent" },
+    });
     await expect(ContactResultPage(params("nope"))).rejects.toThrow("NEXT_NOT_FOUND");
   });
 });

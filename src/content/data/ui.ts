@@ -1,3 +1,5 @@
+import { errorCopy } from "./error-copy";
+
 /**
  * Interface words: headings, labels, link and button text. No facts about the owner here –
  * those live in the other data files. Every value must be non-empty (checked at build).
@@ -7,6 +9,13 @@ export const ui = {
     workCta: "See the work",
     resumeCta: "Resume",
     locationLabel: "Based in",
+  },
+  /** Facts readout beside the About text (D-38): row labels only, the values come from the content. */
+  about: {
+    roleLabel: "Role",
+    basedInLabel: "Based in",
+    statusLabel: "Status",
+    coreStackLabel: "Core stack",
   },
   projects: {
     caseStudy: "Read the case study",
@@ -152,6 +161,8 @@ export const ui = {
     resume: "Resume",
     code: "404",
   },
+  /** Error pages (error.tsx, global-error.tsx) – kept in error-copy.ts, see there. */
+  error: errorCopy,
 } as const;
 
 export type Ui = typeof ui;

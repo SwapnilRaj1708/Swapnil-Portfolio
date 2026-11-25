@@ -75,6 +75,7 @@ describe("/work/<slug>", () => {
     expect(await generateMetadata(params("creo"))).toEqual({
       title: "CREO",
       description: "A design studio's site, built to turn visitors into leads.",
+      alternates: { canonical: "/work/creo" },
     });
     expect(await generateMetadata(params("no-such-project"))).toEqual({
       title: "Page not found",

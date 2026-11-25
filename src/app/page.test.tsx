@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SiteShell } from "@/components/layout/site-shell";
-import { featuredProjects, homeSections, identity, services, site } from "@/content";
+import { featuredProjects, homeSections, identity, services, site, skills, ui } from "@/content";
 import Home from "./page";
 
 function renderHome() {
@@ -22,8 +22,9 @@ describe("home page", () => {
   });
 
   it("renders the role, the pitch and the availability status", () => {
-    renderHome();
-    expect(screen.getByText("Full-Stack Engineer")).toBeInTheDocument();
+    const { container } = renderHome();
+    // The hero's role (the About facts readout repeats it further down).
+    expect(within(container.querySelector("section#top") as HTMLElement).getByText("Full-Stack Engineer")).toBeInTheDocument();
     expect(screen.getByText("I build fast, real-time web products that people actually use.")).toBeInTheDocument();
     expect(screen.getAllByText("Open to full-time roles and freelance projects").length).toBeGreaterThanOrEqual(1);
   });
@@ -44,6 +45,43 @@ describe("home page", () => {
     for (const group of ["Frontend", "Backend", "AI", "Tools"]) {
       expect(screen.getByRole("heading", { name: group })).toBeInTheDocument();
     }
+  });
+
+  it("shows the facts readout after the about text as a description list built from the content (D-38)", () => {
+    const { container } = renderHome();
+    const about = container.querySelector("section#about") as HTMLElement;
+    const facts = about.querySelector("[data-about-facts]") as HTMLElement;
+    expect(facts).not.toBeNull();
+    const list = facts.querySelector("dl") as HTMLElement;
+    expect(list).not.toBeNull();
+    const terms = within(list).getAllByRole("term").map((t) => t.textContent);
+    const values = within(list).getAllByRole("definition").map((d) => d.textContent);
+    expect(terms).toEqual([ui.about.roleLabel, ui.about.basedInLabel, ui.about.statusLabel, ui.about.coreStackLabel]);
+    expect(terms).toEqual(["Role", "Based in", "Status", "Core stack"]);
+    const frontend = skills.find((g) => g.name === "Frontend");
+    expect(values).toEqual([
+      identity.role,
+      `${identity.location} · ${identity.timeZone}`,
+      identity.availability,
+      frontend?.items.slice(0, 3).join(" · "),
+    ]);
+    expect(values).toEqual([
+      "Full-Stack Engineer",
+      "Lucknow, India · IST (UTC+5:30)",
+      "Open to full-time roles and freelance projects",
+      "React · Next.js · TypeScript",
+    ]);
+    // The status row carries the signal dot (decorative); separators are not read.
+    const status = facts.querySelector('[data-fact="status"]') as HTMLElement;
+    expect(status.querySelector("[data-status-dot]")).toHaveAttribute("aria-hidden", "true");
+    for (const sep of facts.querySelectorAll("dd [aria-hidden='true']")) expect(sep.textContent?.trim()).toMatch(/^(·)?$/);
+    // Mono labels, body-face values, the trace line; no image in the section any more.
+    for (const dt of list.querySelectorAll("dt")) expect(dt).toHaveClass("label-mono");
+    expect(facts.querySelector(".bg-accent-trace")).toHaveAttribute("aria-hidden", "true");
+    expect(within(about).queryByRole("img")).toBeNull();
+    // Reading order: every beat comes before the readout.
+    const lastBeat = within(about).getByText(/I like the problems underneath the UI/);
+    expect(lastBeat.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("lists the five featured projects in order, each linking to its case study", () => {

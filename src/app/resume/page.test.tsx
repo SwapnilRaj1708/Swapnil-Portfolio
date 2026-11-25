@@ -38,5 +38,6 @@ describe("/resume", () => {
   it("has its own title and description from the content", () => {
     expect(metadata.title).toBe(site.meta.resume.title);
     expect(metadata.description).toBe(site.meta.resume.description);
+    expect(metadata.alternates?.canonical).toBe("/resume");
   });
 });

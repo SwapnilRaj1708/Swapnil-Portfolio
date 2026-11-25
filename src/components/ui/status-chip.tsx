@@ -7,9 +7,19 @@ export type StatusChipProps = {
 };
 
 /**
- * Availability readout: a lit signal dot and the status text. A soft ring pulses out of the dot
- * (an ambient loop); with reduced motion the ring is not shown and the dot stays steady.
+ * The lit signal dot with its soft pulsing ring (an ambient loop); with reduced motion the ring is
+ * not shown and the dot stays steady. Decorative: the status text beside it carries the meaning.
  */
+export function StatusDot() {
+  return (
+    <span aria-hidden="true" data-status-dot className="relative grid size-2 shrink-0 place-items-center">
+      <span data-status-pulse className="absolute inset-0 rounded-full bg-accent-signal opacity-0 animate-signal-pulse" />
+      <span className="relative size-2 rounded-full bg-accent-signal shadow-signal-halo" />
+    </span>
+  );
+}
+
+/** Availability readout: a lit signal dot and the status text. */
 export function StatusChip({ children, className }: StatusChipProps) {
   return (
     <p
@@ -18,13 +28,7 @@ export function StatusChip({ children, className }: StatusChipProps) {
         className,
       )}
     >
-      <span aria-hidden="true" data-status-dot className="relative grid size-2 shrink-0 place-items-center">
-        <span
-          data-status-pulse
-          className="absolute inset-0 rounded-full bg-accent-signal opacity-0 animate-signal-pulse"
-        />
-        <span className="relative size-2 rounded-full bg-accent-signal shadow-signal-halo" />
-      </span>
+      <StatusDot />
       <span>{children}</span>
     </p>
   );
