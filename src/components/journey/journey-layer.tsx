@@ -5,7 +5,8 @@ import { useStore } from "zustand";
 import { countRender, installJourneyDebug } from "@/lib/journey/debug";
 import { probeWebGl2, readCapabilitySignals, readStaticSignals, REDUCED_MOTION_QUERY, type WebGl2Probe } from "@/lib/journey/signals";
 import { canvasSeen, enterRenderTier, goStatic, journeyStore, setPageVisible, viewStore } from "@/lib/journey/store";
-import { chooseGpuPreference, decideTier, isRenderTier, parseTierOverride, type GpuPreference, type RenderTier } from "@/lib/journey/tiers";
+import { journeyOverrides } from "@/lib/journey/overrides";
+import { decideTier, isRenderTier, type GpuPreference, type RenderTier } from "@/lib/journey/tiers";
 import { useSimpleView } from "@/lib/use-simple-view";
 import type { JourneyCanvasProps } from "./scene/journey-canvas";
 
@@ -13,7 +14,8 @@ import type { JourneyCanvasProps } from "./scene/journey-canvas";
  * The persistent canvas layer (STANDARDS.md §1, §2): mounted once in the site shell, so it lives
  * across client navigations. In order:
  *
- *   1. After hydration, the cheap synchronous checks: the `?tier=` override (not on production),
+ *   1. After hydration, the cheap synchronous checks: the `?tier=` override (not on production;
+ *      from the address the visit was loaded with, kept for the session – overrides.ts),
  *      simple view, reduced motion, data saver, the session's context-loss and low-failure flags,
  *      a failed chunk, then a WebGL 2 probe (no WebGL 2, a software renderer). Any static trigger
  *      ends here: no canvas, no download (tiers.ts `decideTier` has the order and the bypasses).
@@ -67,17 +69,20 @@ function mark(name: string): void {
   }
 }
 
-const overrideAllowed = () => process.env.JOURNEY_TIER_OVERRIDE === "on";
-
-/** The GPU the canvas (and the probe) asks for: visitors "high-performance"; `?gpu=low-power` off production. */
+/**
+ * The GPU the canvas (and the probe) asks for: visitors "high-performance"; `?gpu=low-power` off
+ * production. Like `?tier=`, read from the address the visit was loaded with and kept for the
+ * session (overrides.ts) – never from the current address, which a client navigation may have
+ * changed before this lazy loader runs.
+ */
 function gpuPreference(): GpuPreference {
-  return chooseGpuPreference(window.location.search, overrideAllowed());
+  return journeyOverrides().gpu;
 }
 
 /** Step 1 and the start of step 2: decides the tier into the store (tiers.ts `decideTier`). */
 function decideAndStoreTier(): void {
   const decision = decideTier({
-    override: parseTierOverride(window.location.search, overrideAllowed()),
+    override: journeyOverrides().tier,
     staticSignals: readStaticSignals(chunkFailed),
     probe: () => (probe ??= probeWebGl2(gpuPreference())),
     capabilities: readCapabilitySignals,

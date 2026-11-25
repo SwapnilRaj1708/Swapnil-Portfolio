@@ -46,11 +46,29 @@ describe("navigation: current chapter (3D layer built in)", () => {
     expect(about.className).toContain("aria-[current=location]:underline");
     act(() => publish("skills"));
     expect(marked(panel)).toEqual(["Skills"]);
-    // A chapter without a link of its own (the hero, the projects – Work opens /work) marks nothing.
+    // The hero has no link of its own: nothing is marked.
     act(() => publish("top"));
     expect(marked(panel)).toEqual([]);
     act(() => publish(null));
     expect(marked(panel)).toEqual([]);
+  });
+
+  it("marks Work during the projects chapter (section `work`); its href stays /work", async () => {
+    const { panel, publish } = await load("on");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    const quick = nav.querySelector<HTMLElement>("[data-quick-links]")!;
+    act(() => publish("work"));
+    // Both Work links – the quick link (below lg) and the list entry (from lg) – carry the mark,
+    // with the same visible style as the other chapters (an underline, not colour alone).
+    expect(marked(panel)).toEqual(["Work"]);
+    expect(marked(quick)).toEqual(["Work"]);
+    for (const work of [within(panel).getByRole("link", { name: "Work" }), within(quick).getByRole("link", { name: "Work" })]) {
+      expect(work).toHaveAttribute("href", "/work");
+      expect(work.className).toContain("aria-[current=location]:underline");
+    }
+    act(() => publish("about"));
+    expect(marked(panel)).toEqual(["About"]);
+    expect(marked(quick)).toEqual([]);
   });
 
   it("marks nothing on another page, whatever was published", async () => {
@@ -67,6 +85,9 @@ describe("navigation: production deployment (3D layer not built in)", () => {
     const { panel, publish } = await load("off");
     act(() => publish("about"));
     expect(marked(panel)).toEqual([]);
+    act(() => publish("work"));
+    expect(marked(panel)).toEqual([]);
     expect(within(panel).getByRole("link", { name: "About" }).className).not.toContain("current=location");
+    expect(within(panel).getByRole("link", { name: "Work" }).className).not.toContain("current=location");
   });
 });

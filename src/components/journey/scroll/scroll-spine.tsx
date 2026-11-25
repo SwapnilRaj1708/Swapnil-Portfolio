@@ -9,7 +9,8 @@ import { publishChapterSection } from "@/lib/journey/chapter-bridge";
 import { CHAPTERS, chapterIndexOfSection } from "@/lib/journey/chapters";
 import { countRender, journeyDebug } from "@/lib/journey/debug";
 import { chapterBoundaries, locateChapter, maxScrollOf, scrollToProgress, type ChapterLocation } from "@/lib/journey/scroll-math";
-import { cameraDamped, chooseScrollMode, parseSmoothOverride, type ScrollMode } from "@/lib/journey/scroll-mode";
+import { journeyOverrides } from "@/lib/journey/overrides";
+import { cameraDamped, chooseScrollMode, type ScrollMode } from "@/lib/journey/scroll-mode";
 import { activateScroll, deactivateScroll, scrollStore, setScrollPosition } from "@/lib/journey/scroll-store";
 import { REDUCED_MOTION_QUERY } from "@/lib/journey/signals";
 import { scrollTuning } from "./scroll.tuning";
@@ -51,8 +52,6 @@ let relayout: (() => void) | null = null;
 export function requestSpineLayout(): void {
   relayout?.();
 }
-
-const overrideAllowed = () => process.env.JOURNEY_TIER_OVERRIDE === "on";
 
 function matches(query: string): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
@@ -97,7 +96,8 @@ function startSpine(): () => void {
 function runSpine(els: HTMLElement[]): () => void {
   const root = document.documentElement;
   const mode: ScrollMode = chooseScrollMode({
-    smoothOverride: parseSmoothOverride(window.location.search, overrideAllowed()),
+    // `?smooth=off` as this visit was loaded with (overrides.ts), not the current address.
+    smoothOverride: journeyOverrides().smooth,
     finePointer: matches("(pointer: fine)"),
   });
 

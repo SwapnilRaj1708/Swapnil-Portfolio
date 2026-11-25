@@ -19,8 +19,16 @@ type RigState = NonNullable<ReturnType<NonNullable<NonNullable<Window["__journey
 
 const HIGH = "/?tier=high";
 const NATIVE = "/?tier=high&smooth=off";
-/** The nav links that point at a chapter section (the hero and the projects have none: Work opens /work). */
+/** The nav links that jump to a chapter section (the hero has none; Work opens /work). */
 const NAV_FOR: Record<string, string> = { about: "About", experience: "Experience", skills: "Skills", contact: "Contact" };
+/**
+ * The links marked `aria-current="location"` per section, as `marked()` lists them (every header
+ * link in the DOM, shown or not). The projects chapter (`work`) marks "Work" (href /work), which
+ * is in the header twice: the quick link below lg and the list entry from lg – both carry the mark,
+ * as both carry `aria-current="page"` on /work. The hero marks nothing.
+ */
+const MARKED_FOR: Record<string, string[]> = { ...Object.fromEntries(Object.entries(NAV_FOR).map(([id, name]) => [id, [name]])), work: ["Work", "Work"] };
+const markedFor = (sectionId: string) => MARKED_FOR[sectionId] ?? [];
 
 const scroll = (page: Page) => page.evaluate(() => window.__journey!.scroll!()) as Promise<ScrollState>;
 const rig = (page: Page) => page.evaluate(() => window.__journey!.rig!()) as Promise<RigState>;
@@ -59,6 +67,50 @@ async function waitForCamera(page: Page) {
 
 function marked(page: Page) {
   return page.locator('header a[aria-current="location"]').evaluateAll((links) => links.map((a) => a.textContent));
+}
+
+/**
+ * Holds back the tier loader's lazy chunk (recognised by content: the loader's `journey:checks`
+ * mark) from `hold()` until `release()`. Routing turns the HTTP cache off, so every page load
+ * requests it again. Each chunk's content is looked at once; after that the loader's file is held
+ * and every other file passes straight through. `stop()` removes the route.
+ */
+async function holdTierLoader(page: Page) {
+  let release = () => {};
+  let held: Promise<void> = Promise.resolve();
+  const isLoader = new Map<string, boolean>();
+  const pattern = /\/_next\/static\/chunks\/.+\.js(\?.*)?$/;
+  await page.route(pattern, async (route) => {
+    const url = route.request().url();
+    const known = isLoader.get(url);
+    if (known !== undefined) {
+      if (known) await held;
+      await route.continue().catch(() => undefined);
+      return;
+    }
+    let response: Awaited<ReturnType<typeof route.fetch>>;
+    let body: Buffer;
+    try {
+      // Retries a connection reset (the local server under a full parallel run), as journey.spec.ts.
+      response = await route.fetch({ maxRetries: 3 });
+      body = await response.body();
+    } catch {
+      // The request went away (a navigation, the page closing): let the browser have it as it is.
+      await route.continue().catch(() => undefined);
+      return;
+    }
+    const loader = body.includes("journey:checks");
+    isLoader.set(url, loader);
+    if (loader) await held;
+    await route.fulfill({ response, body }).catch(() => undefined);
+  });
+  return {
+    hold: () => {
+      held = new Promise<void>((resolve) => (release = resolve));
+    },
+    release: () => release(),
+    stop: () => page.unroute(pattern),
+  };
 }
 
 async function openMenuIfPhone(page: Page, phone: boolean) {
@@ -370,20 +422,47 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
       await waitForCamera(page);
       const r = await rig(page);
       if (s.chapterProgress < 0.01) expect(Math.abs(r.frame - r.starts[i])).toBeLessThan(0.5);
-      expect(await marked(page)).toEqual(NAV_FOR[c.sectionId] ? [NAV_FOR[c.sectionId]] : []);
+      expect(await marked(page)).toEqual(markedFor(c.sectionId));
     }
   });
 
+  // Regression test for the PF-008 CI failure: the client link from /work?tier=high to /#<id> drops
+  // the query, and on a slow runner the lazy tier loader ran after that navigation, saw no
+  // override, found SwiftShader and went static – so the spine never started. The loader's chunk
+  // is held back here until the navigation is done, which makes that order certain on any
+  // machine. The overrides must come from the address the visit was loaded with and stay for the
+  // session (src/lib/journey/overrides.ts).
   test("deep links land on their chapter after a client navigation", async ({ page }, info) => {
+    // Six page loads and a reload, each starting the 3D chunk on a software renderer, with the HTTP
+    // cache off while the route holds the loader: more than the suite's 120 s under a full parallel
+    // run (the first local run timed out in the final reload). The waits inside are unchanged.
+    test.setTimeout(240_000);
     const phone = info.project.name === "phone";
+    const loader = await holdTierLoader(page);
+    // The held chunk keeps the load event from firing, so wait for the DOM and then for React to
+    // have hydrated the header (its props attached to the links): a click is then a client
+    // navigation, as on CI, never a full page load.
+    const openWorkHydrated = async (p: Page) => {
+      await p.goto("/work?tier=high", { waitUntil: "domcontentloaded" });
+      await expect(p.getByRole("heading", { level: 1 })).toBeVisible();
+      await p.waitForFunction(() =>
+        [...document.querySelectorAll("header a")].every((a) => Object.keys(a).some((k) => k.startsWith("__reactProps$"))),
+      );
+    };
+    const expectForcedHigh = async () =>
+      expect(await page.evaluate(() => window.__journey!.state())).toMatchObject({ tier: "high", forced: true, reason: "override" });
     for (const id of ["about", "experience", "skills", "contact"]) {
-      await page.goto("/work?tier=high");
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      loader.hold();
+      await openWorkHydrated(page);
       await openMenuIfPhone(page, phone);
       await page.locator("header").getByRole("link", { name: NAV_FOR[id], exact: true }).click();
-      await page.waitForURL(`**/#${id}`);
+      await page.waitForURL(`**/#${id}`, { waitUntil: "commit" });
+      // The loader has not decided anything yet: it will see an address without the query.
+      expect(await page.evaluate(() => performance.getEntriesByName("journey:checks").length)).toBe(0);
+      loader.release();
       await waitForSpine(page);
       await waitForStore(page);
+      await expectForcedHigh();
       const s = await scroll(page);
       const index = CHAPTERS.findIndex((c) => c.sectionId === id);
       expect(s.chapter).toBe(CHAPTERS[index].id);
@@ -391,11 +470,24 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
       expect(await marked(page)).toEqual([NAV_FOR[id]]);
     }
     // The home link: back to the top, the port.
-    await page.goto("/work?tier=high");
+    loader.hold();
+    await openWorkHydrated(page);
     await page.locator("header a[href='/']").click();
-    await page.waitForURL((url) => url.pathname === "/");
+    await page.waitForURL((url) => url.pathname === "/", { waitUntil: "commit" });
+    loader.release();
     await waitForSpine(page);
+    await expectForcedHigh();
     expect((await scroll(page)).chapter).toBe("port");
+    // Kept for the session: a reload of an address without the query still runs the spine (the
+    // route is gone: nothing is held, the cache is back).
+    await loader.stop();
+    await page.goto("/#skills");
+    await page.reload();
+    expect(await page.evaluate(() => new URL(performance.getEntriesByType("navigation")[0].name).search)).toBe("");
+    await waitForSpine(page);
+    await expectForcedHigh();
+    await waitForStore(page);
+    expect((await scroll(page)).chapter).toBe(CHAPTERS.find((c) => c.sectionId === "skills")!.id);
   });
 
   for (const [label, path] of [
@@ -455,7 +547,16 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
       const end = i + 1 < CHAPTERS.length ? s.boundaries[i + 1] : s.max;
       await scrollToY(page, Math.round((s.boundaries[i] + end) / 2));
       expect((await scroll(page)).chapter).toBe(c.id);
-      await expect.poll(() => marked(page)).toEqual(NAV_FOR[c.sectionId] ? [NAV_FOR[c.sectionId]] : []);
+      await expect.poll(() => marked(page)).toEqual(markedFor(c.sectionId));
+      if (c.sectionId === "work") {
+        // The projects chapter: the Work link shown in the header (the list entry on desktop, the
+        // quick link on the phone) is marked and underlined like the others; it still opens /work.
+        const work = page.locator('header a[aria-current="location"]').filter({ visible: true });
+        await expect(work).toHaveCount(1);
+        await expect(work).toHaveText("Work");
+        await expect(work).toHaveAttribute("href", "/work");
+        expect(await work.evaluate((a) => getComputedStyle(a).textDecorationLine)).toContain("underline");
+      }
     }
     if (info.project.name === "desktop") {
       // Not colour alone: the current link is underlined.

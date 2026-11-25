@@ -20,7 +20,16 @@ import { SimpleViewSwitch } from "./simple-view-switch";
  * links stay real anchors (`/#about` …): without JavaScript, in the static tier and on the
  * production deployment they are plain anchor links; with the spine running a click scrolls there
  * smoothly (src/components/journey/scroll/scroll-spine.tsx).
+ *
+ * A section's link is its anchor (`/#about`) or, where the section has a page of its own with the
+ * same name, that page: during the projects chapter (section `work`) "Work" is marked, and its
+ * href stays `/work`. The hero (`top`) has no link and marks nothing. Only the chapter registry's
+ * section ids are ever published (src/lib/journey/chapters.ts), so `/resume` is never a location.
  */
+function sectionHrefs(sectionId: string): readonly string[] {
+  return [`/#${sectionId}`, `/${sectionId}`];
+}
+
 export function SiteNav({ items }: { items: readonly NavItem[] }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -29,7 +38,7 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
   const chapterSection = useJourneyChapter();
   const currentOf = (href: string): "page" | "location" | undefined => {
     if (pathname === href) return "page";
-    if (chapterSection !== null && pathname === "/" && href === `/#${chapterSection}`) return "location";
+    if (chapterSection !== null && pathname === "/" && sectionHrefs(chapterSection).includes(href)) return "location";
     return undefined;
   };
 
