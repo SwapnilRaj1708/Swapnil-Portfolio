@@ -196,6 +196,20 @@
   }
 }
 
+/*
+ * Text over the 3D canvas (PF-008). With the canvas mounted (non-static tiers; JourneyCanvas sets
+ * `data-journey-canvas` on <html>), every home section is see-through and its text stands on this
+ * scrim: the background colour at 90 %. src/styles/contrast-pairs.ts proves 4.5:1 for every text
+ * colour on it even with pure white behind (the brightest pixel the canvas can show), and
+ * contrast.test.ts keeps the 90 % here equal to the value the proof uses. `canvas:` applies a
+ * utility only while the canvas is mounted; the static tier and production never match it.
+ */
+@custom-variant canvas (&:where([data-journey-canvas] *));
+
+@utility canvas-scrim {
+  background-color: color-mix(in srgb, var(--color-background) 90%, transparent);
+}
+
 /* First screen of a page, below the sticky header. */
 @utility min-h-first-screen {
   min-height: calc(100svh - var(--spacing-header));

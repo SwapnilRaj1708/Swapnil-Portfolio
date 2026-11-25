@@ -4,6 +4,9 @@ import { button, Leva, useControls } from "leva";
 import { Perf } from "r3f-perf";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { CHAPTERS, MAX_EXTRA_SCROLL } from "@/lib/journey/chapters";
+import { requestSpineLayout } from "../scroll/scroll-spine";
+import { scrollTuning } from "../scroll/scroll.tuning";
 import { testObjectTuning as tuning } from "./test-object.tuning";
 
 /**
@@ -21,9 +24,22 @@ import { testObjectTuning as tuning } from "./test-object.tuning";
  * navigation; the hero copy sits in the left column, so the right side below the header is free.
  * The performance overlay stays at the bottom right.
  */
+/** Everything the panel tunes, as the JSON the owner hands back (baked in by the next prompt). */
+function currentValues() {
+  return {
+    testObject: tuning,
+    scroll: {
+      // Extra scroll length per chapter, in viewport heights (src/lib/journey/chapters.ts).
+      extraScroll: Object.fromEntries(CHAPTERS.map((c) => [c.id, c.extraScroll])),
+      // src/components/journey/scroll/scroll.tuning.ts
+      ...scrollTuning,
+    },
+  };
+}
+
 async function exportValues(): Promise<void> {
-  const json = JSON.stringify({ testObject: tuning }, null, 2);
-  console.info(`[tuning] test object\n${json}`);
+  const json = JSON.stringify(currentValues(), null, 2);
+  console.info(`[tuning] journey\n${json}`);
   try {
     await navigator.clipboard.writeText(json);
   } catch {
@@ -67,6 +83,46 @@ export function DevTools() {
       step: 0.05,
       onChange: (v: number) => {
         tuning.fillLightIntensity = v;
+      },
+    },
+    "Export values": button(() => {
+      void exportValues();
+    }),
+  });
+  // PF-008: each chapter's extra scroll length (viewport heights) and the smoothing values.
+  useControls("Scroll (PF-008)", {
+    ...Object.fromEntries(
+      CHAPTERS.map((c) => [
+        `extra ${c.id}`,
+        {
+          value: c.extraScroll,
+          min: 0,
+          max: MAX_EXTRA_SCROLL,
+          step: 0.05,
+          onChange: (v: number) => {
+            if (c.extraScroll === v) return;
+            c.extraScroll = v;
+            requestSpineLayout();
+          },
+        },
+      ]),
+    ),
+    lenisLerp: {
+      value: scrollTuning.lenisLerp,
+      min: 0.01,
+      max: 1,
+      step: 0.01,
+      onChange: (v: number) => {
+        scrollTuning.lenisLerp = v;
+      },
+    },
+    cameraDamping: {
+      value: scrollTuning.cameraDamping,
+      min: 0.5,
+      max: 30,
+      step: 0.5,
+      onChange: (v: number) => {
+        scrollTuning.cameraDamping = v;
       },
     },
     "Export values": button(() => {

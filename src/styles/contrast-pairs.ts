@@ -9,7 +9,29 @@ export type ContrastPair = {
   bg: string;
   use: string;
   kind: "text" | "non-text";
+  /**
+   * The background is translucent (PF-008: the canvas scrim): `bg` at `alpha` laid over `behind`,
+   * the brightest colour that can be under it. The ratio is computed against that mix.
+   */
+  over?: { alpha: number; behind: string; what: string };
 };
+
+/**
+ * The canvas scrim (PF-008, `canvas-scrim` in globals.css): the background colour at 90 % under the
+ * text of every home section while the 3D canvas shows behind the page. contrast.test.ts keeps
+ * the stylesheet's percentage equal to this value.
+ */
+export const CANVAS_SCRIM_ALPHA = 0.9;
+
+/**
+ * The worst case behind the scrim: pure white, the brightest pixel the canvas can output at all
+ * (sRGB after tone mapping is at most 1.0). The stand-in scene is far darker (unlit
+ * `surface-raised` pillars, the background clear colour, the test object's lit chip and amber
+ * strip); proving the pairs against white makes them hold for any scene a later chapter brings.
+ */
+export const CANVAS_WORST_CASE = { hex: "#ffffff", what: "pure white (the canvas's brightest possible pixel)" } as const;
+
+const onScrim = { alpha: CANVAS_SCRIM_ALPHA, behind: CANVAS_WORST_CASE.hex, what: CANVAS_WORST_CASE.what };
 
 export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { fg: "text", bg: "background", use: "body text, headings, header, footer", kind: "text" },
@@ -44,6 +66,31 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   // two links stand on their own surfaces (pairs above). The header stays solid background.
   { fg: "text", bg: "background", use: "hero name and pitch over the 3D canvas", kind: "text" },
   { fg: "text-muted", bg: "background", use: "hero role and place over the 3D canvas", kind: "text" },
+  // PF-008: the camera travels. The hero copy has no scrim; behind it the stand-in scene shows only
+  // the clear colour (background) and the marker pillars, unlit `surface-raised` (tone mapping only
+  // darkens them). The lit test object is kept out of the copy along the whole port chapter
+  // (e2e/scroll.spec.ts checks its bounds at the port's start, middle and end).
+  { fg: "text", bg: "surface-raised", use: "hero name and pitch over a stand-in marker pillar", kind: "text" },
+  { fg: "text-muted", bg: "surface-raised", use: "hero role and place over a stand-in marker pillar", kind: "text" },
+  // PF-008: every other home section's text over the canvas stands on the canvas scrim, proven
+  // against the worst case behind it (pure white).
+  { fg: "text", bg: "background", use: "section headings and body text on the canvas scrim", kind: "text", over: onScrim },
+  { fg: "text-muted", bg: "background", use: "labels, roles, dates on the canvas scrim", kind: "text", over: onScrim },
+  { fg: "accent-trace", bg: "background", use: "section index label on the canvas scrim", kind: "text", over: onScrim },
+  { fg: "accent-signal", bg: "background", use: "inline links (All work →, email) on the canvas scrim", kind: "text", over: onScrim },
+  { fg: "accent-signal", bg: "background", use: "focus ring on the canvas scrim", kind: "non-text", over: onScrim },
+  // PF-008: the navigation's current-chapter mark (aria-current="location"): text colour with a
+  // trace-accent underline, in the header (background) and the phone menu (surface-raised).
+  { fg: "text", bg: "background", use: "navigation: current chapter link", kind: "text" },
+  { fg: "accent-trace", bg: "background", use: "navigation: current chapter underline", kind: "non-text" },
+  { fg: "text", bg: "surface-raised", use: "phone menu: current chapter link", kind: "text" },
+  { fg: "accent-trace", bg: "surface-raised", use: "phone menu: current chapter underline", kind: "non-text" },
 ];
+
+/** The colour a pair's text actually stands on (a translucent background mixed over its worst case). */
+export function pairBackground(pair: ContrastPair, colors: Record<string, string>, mix: (a: string, percentA: number, b: string) => string): string {
+  const bg = colors[pair.bg];
+  return pair.over ? mix(bg, pair.over.alpha * 100, pair.over.behind) : bg;
+}
 
 export const MIN_RATIO = { text: 4.5, "non-text": 3 } as const;

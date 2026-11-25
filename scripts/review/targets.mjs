@@ -1,11 +1,12 @@
 // Capture targets for `npm run review:shots`.
 //
 // A target is a named place to photograph: a route, plus an optional `prepare(page)` step that
-// moves the page into position (PF-008 adds chapter stops here, e.g. scroll to a chapter's
-// start, middle and end and wait for the scene to settle).
+// moves the page into position.
 //
-// On the command line, an argument that starts with "/" is a route; anything else must be a
-// name in NAMED_TARGETS.
+// On the command line, an argument that starts with "/" is a route; `<chapter>:<start|mid|end>`
+// is a chapter stop (PF-008: `/?tier=high` scrolled to the chapter's start, middle or end, resolved
+// from the live registry, the camera settled), optionally `@desktop` or `@phone` for one viewport –
+// written as `<chapter>-<point>-<viewport>.png`; anything else must be a name in NAMED_TARGETS.
 
 /**
  * @typedef {object} Viewport
@@ -168,11 +169,78 @@ export const NAMED_TARGETS = {
       await page.waitForTimeout(1500);
     },
   },
-  // Chapter stops are added by PF-008, for example:
-  // "port-start": { path: "/", prepare: async (page) => { /* scroll to the start of `port` */ } },
+  // PF-008: chapter stops are not listed here; any `<chapter>:<start|mid|end>` argument is one
+  // (resolveTargets below), optionally limited to one viewport with `@desktop` / `@phone`.
 };
 
 export const DEFAULT_TARGETS = ["/"];
+
+// ---------------------------------------------------------------------------------------------
+// Chapter stops (PF-008)
+
+/** The chapters in registry order (src/lib/journey/chapters.ts – the live registry decides at capture time). */
+export const CHAPTER_IDS = ["port", "bus", "memory", "array", "core", "uplink"];
+export const STOP_POINTS = ["start", "mid", "end"];
+const STOP_PATTERN = /^([a-z]+):(start|mid|end)(?:@(desktop|phone))?$/;
+
+/**
+ * Scrolls the home page to a chapter stop, resolved from the live registry and the measured
+ * sections (`window.__journey.scroll()`): start = the chapter's start + 1 px; mid = halfway to the
+ * next chapter's start (the page end for the last); end = the next chapter's start − 1 px, or the
+ * page end. Waits for the store and for the camera to arrive (the eased mode needs a moment), then
+ * returns where it landed.
+ * @param {import("@playwright/test").Page} page
+ */
+export async function scrollToChapterStop(page, chapter, point) {
+  await page.waitForFunction(() => window.__journey?.ready === true && window.__journey.scroll?.()?.active === true && !!window.__journey.rig, null, {
+    timeout: 60_000,
+  });
+  const y = await page.evaluate(
+    ([c, p]) => {
+      const s = window.__journey.scroll();
+      const i = s.chapters.indexOf(c);
+      if (i < 0) throw new Error(`no chapter ${c} in the registry (${s.chapters.join(", ")})`);
+      const start = s.boundaries[i];
+      const next = i + 1 < s.boundaries.length ? s.boundaries[i + 1] : s.max;
+      const last = i + 1 >= s.boundaries.length;
+      const y = p === "start" ? start + 1 : p === "mid" ? (start + next) / 2 : last ? s.max : next - 1;
+      return Math.round(Math.min(s.max, Math.max(0, y)));
+    },
+    [chapter, point],
+  );
+  await page.evaluate((top) => window.scrollTo({ top, behavior: "instant" }), y);
+  await page.waitForFunction(
+    (top) => {
+      const s = window.__journey?.scroll?.();
+      const r = window.__journey?.rig?.();
+      if (!s || !r || Math.abs(window.scrollY - top) > 1) return false;
+      const expected = s.max > 0 ? (window.scrollY >= s.max - 0.5 ? 1 : window.scrollY / s.max) : 0;
+      return Math.abs(s.progress - expected) < 1e-9 && Math.abs(r.frame - r.targetFrame) < 0.01;
+    },
+    y,
+    { timeout: 20_000 },
+  );
+  await page.waitForTimeout(500);
+  const s = await page.evaluate(() => window.__journey.scroll());
+  if (s.chapter !== chapter) throw new Error(`${chapter}:${point} landed in chapter ${s.chapter} (scroll ${s.scrollY})`);
+  return { scrollY: s.scrollY, chapter: s.chapter, progress: s.progress, chapterProgress: s.chapterProgress };
+}
+
+/** A chapter stop as a capture target (on `?tier=high`; review-shots adds `?gpu=low-power`). */
+function chapterStopTarget(arg) {
+  const m = STOP_PATTERN.exec(arg);
+  if (!m || !CHAPTER_IDS.includes(m[1])) return null;
+  const [, chapter, point, only] = m;
+  return {
+    name: `${chapter}-${point}`,
+    path: "/?tier=high",
+    viewports: only ? VIEWPORTS.filter((v) => v.name === only) : undefined,
+    prepare: async (page) => {
+      await waitForCanvas(page);
+      await scrollToChapterStop(page, chapter, point);
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------------------------
 // The canvas (PF-007)
@@ -196,15 +264,22 @@ async function waitForStatic(page, reason) {
 
 /**
  * Stops for `npm run numbers`: where the scene is measured. A stop is a route plus an optional
- * `prepare(page)` (PF-008 adds chapter stops: scroll to a chapter's start, middle and end).
- * @type {Record<string, { path: string, prepare?: (page: import("@playwright/test").Page) => Promise<void> }>}
+ * `prepare(page)`. PF-008: every `<chapter>:<start|mid|end>` is a stop on `/` – scrolled there
+ * after the canvas is up, resolved from the live registry (scrollToChapterStop).
+ * @type {Record<string, { path: string, prepare?: (page: import("@playwright/test").Page) => Promise<unknown> }>}
  */
 export const NUMBER_STOPS = {
-  // The PF-007 test object behind the hero.
+  // The PF-007 test object behind the hero, at the top of the page.
   "/": { path: "/" },
+  ...Object.fromEntries(
+    CHAPTER_IDS.flatMap((chapter) =>
+      STOP_POINTS.map((point) => [`${chapter}:${point}`, { path: "/", prepare: (page) => scrollToChapterStop(page, chapter, point) }]),
+    ),
+  ),
 };
 
-export const DEFAULT_STOPS = ["/"];
+/** Every chapter's middle, plus the first and the last screen of the page. */
+export const DEFAULT_STOPS = ["port:start", ...CHAPTER_IDS.map((c) => `${c}:mid`), "uplink:end"];
 
 /** Command-line stops → stop objects. */
 export function resolveStops(args) {
@@ -294,11 +369,14 @@ export function resolveTargets(args) {
   const list = args.length ? args : DEFAULT_TARGETS;
   return list.map((arg) => {
     if (arg.startsWith("/")) return { name: routeSlug(arg), path: arg };
+    const stop = chapterStopTarget(arg);
+    if (stop) return stop;
     const named = NAMED_TARGETS[arg];
     if (!named) {
       const known = Object.keys(NAMED_TARGETS);
       throw new Error(
-        `Unknown target "${arg}". Use a route starting with "/"` +
+        `Unknown target "${arg}". Use a route starting with "/", a chapter stop <chapter>:<start|mid|end>[@desktop|@phone] ` +
+          `(chapters: ${CHAPTER_IDS.join(", ")})` +
           (known.length ? ` or one of: ${known.join(", ")}` : "") +
           ".",
       );

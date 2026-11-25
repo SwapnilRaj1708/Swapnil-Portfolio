@@ -80,25 +80,33 @@ Code that imports the 3D layer tests the flag in place: `src/components/journey/
 - **First-load JS of `/`:** 161.4 KB gzip with the layer, 158.5 KB in a production build. Main's production build of `/` was 157.2 KB: the +1.3 KB on every route is the inert gate module and `next/dynamic`.
 - **Production HTML:** the prerendered home, `/work`, a case study, `/resume`, the 404 and a contact result are identical to main's, scripts and hashes aside, except for the Simple-view knob fix below.
 
+**Measured (PF-008, 2026-11-25).**
+
+- **The lazy journey chunks:** one file again (the bundler put the spine, gsap, ScrollTrigger, Lenis and the rig with three.js and R3F): 312.4 KB gzip (258.5 KB Brotli, 1122.5 KB raw; limit 400 KB for the sum), +66.7 KB over PF-007. None of it is in any route's first-load JS.
+- **First-load JS of `/`:** 161.6 KB gzip with the layer, 158.6 KB in a production build (PF-007: 158.5 KB).
+- **Production build:** no file in `.next/static` contains three.js, R3F, gsap, ScrollTrigger, Lenis, the rig or the loader, nor the chapter bridge's or the scrim's names; the prerendered home, `/work`, two case studies, `/resume`, a contact result and the 404 are identical to main's, scripts and hashes aside (the social images byte for byte; only their URL's hash query differs).
+- **Scene numbers** (`.review/PF-008/numbers.md`, the reference laptop's integrated AMD Radeon, headed, `?gpu=low-power`): at every chapter stop 1–3 draw calls, 72–784 triangles, no textures; frame p95 8.8–10.1 ms on every tier at the 120 Hz display's cap.
+- **The stand-in pillars on screen:** rgb(3, 16, 29) (relative luminance 0.0048), darker than `surface-raised` (0.0156) – PBR Neutral tone mapping lowers dark values and shifts them toward blue.
+
 **The layer.** `src/components/journey/journey-layer.tsx` (client, loaded with `next/dynamic` and `ssr: false`, rendered by `SiteShell` after the footer). It is mounted once, so it survives client navigations. Its host is `<div aria-hidden="true" data-journey-host>`: fixed, the full viewport, `-z-10`, `pointer-events: none`. The canvas inside has no tab stop. The host fades in (`opacity`, `duration-slow`) once the first frame is drawn, and only while a see-through section is in view.
 
-With the layer built in, `body` is `isolate`. Otherwise `body`'s own background would paint over a layer below z-index 0. Every home section except the hero gets `bg-background` (the colour behind it anyway), so the canvas shows through the hero only. The header stays solid.
+With the layer built in, `body` is `isolate`. Otherwise `body`'s own background would paint over a layer below z-index 0. Since PF-008 every home section is see-through, so the canvas shows behind the whole home page (see "DOM sections over the canvas" in "Native scroll" below). The header and the footer stay solid.
 
 The order of events:
 
 1. **After hydration, the cheap checks**, all synchronous: the `?tier=` override (only where allowed), simple view, reduced motion, data saver, the session's context-loss and low-tier-failure flags, a failed chunk, then a WebGL 2 probe on a throwaway canvas (no WebGL 2, a software renderer). Any static trigger ends here: no canvas and no download (see "Static triggers" in §2). The order and the override's bypasses are one pure function, `decideTier` in `src/lib/journey/tiers.ts`.
-2. **The start tier** goes into the tier store. The chunk is then imported only when three things hold: the `load` event has fired, the browser is idle (`requestIdleCallback`, 2 s timeout) and the page has a see-through section. So `/work` and `/resume` never download it, and a client navigation to `/` loads it then. The chunk is `src/components/journey/scene/journey-canvas.tsx` with three.js and React Three Fiber. It is a plain dynamic `import()`, so a failure is caught: static tier, no error overlay.
+2. **The start tier** goes into the tier store. The chunk is then imported only when three things hold: the `load` event has fired, the browser is idle (`requestIdleCallback`, 2 s timeout) and the page has a see-through section. So `/work` and `/resume` never download it, and a client navigation to `/` loads it then. The chunk is `src/components/journey/scene/journey-canvas.tsx` with three.js and React Three Fiber, and since PF-008 the scroll spine with gsap, ScrollTrigger and Lenis, and the camera rig (the bundler splits them into several files; `npm run size` sums them). It is a plain dynamic `import()`, so a failure is caught: static tier, no error overlay.
 3. **The canvas** renders the scene and fades in.
 
 Performance marks: `journey:checks`, `journey:decided` (the tier is in the store), `journey:chunk-request`, `journey:chunk-loaded`.
 
 **What a static visitor downloads.** Before the decision the page has loaded only the first-load JS of the route (the loader itself is a small chunk `next/dynamic` requests after hydration; it holds the tier rules, the probe and the tier store) plus the document, stylesheet and fonts. The probe creates two throwaway WebGL contexts at most, which download nothing. three.js, React Three Fiber and the scene are never requested. `e2e/journey.spec.ts` prints the resource list up to `journey:decided` as `[journey detection]`.
 
-**The hero is the canvas's window.** `HeroSection` passes its backdrop (the Port still and its scrims) to `TierBackdrop` (`src/components/journey/tier-backdrop.tsx`):
+**The home sections are the canvas's windows.** `HeroSection` passes its backdrop (the Port still and its scrims) to `TierBackdrop` (`src/components/journey/tier-backdrop.tsx`); since PF-008 every `SectionBanner` does the same with its chapter's still:
 
-- In the static tier it draws the backdrop: eager, high priority, on a `bg-background` box, the stage 1 hero.
+- In the static tier it draws the backdrop: on a `bg-background` box, the stage 1 hero (eager, high priority) and banners (lazy).
 - Before the tier is known (server render, hydration) and on every render tier, the backdrop sits inside `<noscript>`. Browsers with JavaScript never parse it, so the still is not even downloaded. Browsers without JavaScript draw it exactly as in stage 1.
-- The tier backdrop registers its section with the view store: mounted (the chunk may load) and intersecting (the canvas may render).
+- The tier backdrop registers its section (the nearest `[data-chapter]`) with the view store: mounted (the chunk may load) and intersecting (the canvas may render).
 
 In a static tier caused by a trigger, the still therefore starts loading just after hydration, not with the HTML (in previews; production is unchanged).
 
@@ -113,14 +121,14 @@ In a static tier caused by a trigger, the still therefore starts loading just af
 
 **The test object** (`scene/test-object.tsx`) is plumbing, not a look. It is a bevelled chip in `surface` (PBR, metalness 0.45, roughness 0.45) with one trace-amber emissive strip, a hemisphere fill and a cool directional key (2 lights). Colours come from `src/styles/palette.ts`.
 
-It sits outside the text-safe area (`scene/layout.ts`, unit-tested):
+It sits outside the text-safe area (`scene/layout.ts`, unit-tested), placed for the port's camera pose (8 m from it, vertical FOV 35°: `PORT_REFERENCE`) since PF-008 – the camera now travels, and the object stays where the port stop frames it whatever pose the page was loaded at:
 
 - **wide:** centred at 75 % of the width and spanning at most 55–95 %. The hero copy column can reach ~52 % on a 4:3 window;
 - **portrait:** centred at 70 % of the height and spanning at most 55–85 %.
 
 `e2e/journey.spec.ts` projects its bounding sphere to the screen and checks it never overlaps the hero copy's line boxes at six desktop sizes and on the phone. It prints `[object bounds]`.
 
-The canvas clears to `background`, so the hero copy always stands on the background colour. Its pairs are in `src/styles/contrast-pairs.ts`. The status chip and the links stand on their own surfaces.
+The canvas clears to `background`, so the hero copy stands on the background colour or, since PF-008, on a stand-in marker pillar (unlit `surface-raised`). Its pairs are in `src/styles/contrast-pairs.ts`. The status chip and the links stand on their own surfaces. Along the whole port chapter the camera only moves forward, left and up and turns left, which carries the object further right and down on screen; `e2e/scroll.spec.ts` checks its bounds against the visible hero copy at the port's start, middle and end (`[object bounds]`).
 
 The object owns its geometries and materials and disposes them in its own effect cleanup. That cleanup runs before R3F releases the renderer, so three.js frees their programs while it still tracks them. R3F disposes removed objects later, on idle, after its renderer teardown.
 
@@ -129,9 +137,11 @@ The object owns its geometries and materials and disposes them in its own effect
 **Pause rules** (STANDARDS §4). Frames are rendered only while both hold:
 
 - the page is visible (Page Visibility);
-- a see-through section intersects the viewport (IntersectionObserver on the hero).
+- a see-through section intersects the viewport (IntersectionObserver on each home section).
 
-Otherwise R3F's loop is set to `"never"`. Scrolled past the hero, or on `/work` after a client navigation, the canvas is fully covered: no frames, and the host fades out. On resume the downgrade monitor starts over, because the first interval spans the pause. The tests count frames through `window.__journey.frames`.
+Otherwise R3F's loop is set to `"never"`. On `/work` after a client navigation the canvas is fully covered: no frames, and the host fades out. (Since PF-008 every home section is see-through, so on `/` the canvas renders wherever the page is scrolled.) On resume the downgrade monitor starts over, because the first interval spans the pause. The tests count frames through `window.__journey.frames`.
+
+Next.js 16 with Cache Components keeps the previous route's DOM mounted but hidden (React `<Activity>`, `display: none`) so that Back is instant. On a case study the home sections therefore still exist, hidden: they do not intersect the viewport (the canvas stays paused), and the scroll spine starts only on sections that are actually shown (below).
 
 **Context loss.** `ContextLossWatch` in `journey-canvas.tsx`:
 
@@ -148,27 +158,84 @@ These are present only in builds where `JOURNEY_DEV_TOOLS` is "on": `next dev`, 
 
 They show at once under `next dev`. In an `ENABLE_DEV_PAGES=1` build they show only with `?tune` in the URL. A machine whose `.env` sets that flag builds every local build with it, and the panel would otherwise cover the header in tests, captures and frame-time numbers.
 
-**Debug hooks.** `window.__journey` (`src/lib/journey/debug.ts`) exists only where the override is allowed. It offers the store state, frames, first-frame flag, scene stats (including the canvas context's renderer and `powerPreference`), frame sampling, the object's screen bounds, the last release, a `loadMs` busy-wait for forcing a downgrade in tests, and `simulatedFrameMs`: when above 0, the downgrade monitor sees that interval instead of the measured one, so a test can make frames look slow without slowing the machine (the low-tier failure test uses it).
+**Debug hooks.** `window.__journey` (`src/lib/journey/debug.ts`) exists only where the override is allowed. It offers the store state, frames, first-frame flag, scene stats (including the canvas context's renderer and `powerPreference`), frame sampling, the object's screen bounds, the last release, a `loadMs` busy-wait for forcing a downgrade in tests, and `simulatedFrameMs`: when above 0, the downgrade monitor sees that interval instead of the measured one, so a test can make frames look slow without slowing the machine (the low-tier failure test uses it). PF-008 adds `scroll()` (the scroll store plus the measured boundaries, section tops, scroll padding and maximum), `rig()` (the path's frame range and chapter starts, the frame shown and aimed at, the camera's position, rotation and FOV), `setExtraScroll(chapter, vh)` (what the panel does) and `renders` (React renders per journey component).
 
-**Numbers script** (`npm run numbers -- <ID> [stops…] [--headless]`, `scripts/numbers.mjs`, STANDARDS §8). It builds and serves the site, then opens full Chromium on the real GPU, headed by default (the review:shots launch method, never the headless shell). Each stop in `NUMBER_STOPS` (`scripts/review/targets.mjs`; PF-008 adds chapter stops) is loaded with `?tier=high`, `medium` and `low`, plus "medium (throttled)": high with CDP CPU throttling 4×. Each of these measured runs adds `?gpu=low-power` (D-40: the integrated GPU). One more run, "visitor default (high-performance)", loads `?tier=high` without it: information only, not judged against a budget, so the report shows which GPU a visitor's canvas gets on this machine. After a 3 s warm-up it samples 10 s and records:
+**Numbers script** (`npm run numbers -- <ID> [stops…] [--headless]`, `scripts/numbers.mjs`, STANDARDS §8). It builds and serves the site, then opens full Chromium on the real GPU, headed by default (the review:shots launch method, never the headless shell). Each stop in `NUMBER_STOPS` (`scripts/review/targets.mjs`: `/`, and since PF-008 every chapter stop `<chapter>:start|mid|end`; by default `port:start`, each chapter's `mid` and `uplink:end`) is loaded with `?tier=high`, `medium` and `low`, plus "medium (throttled)": high with CDP CPU throttling 4×. Each of these measured runs adds `?gpu=low-power` (D-40: the integrated GPU). One more run, "visitor default (high-performance)", loads `?tier=high` without it: information only, not judged against a budget, so the report shows which GPU a visitor's canvas gets on this machine. After a 3 s warm-up it samples 10 s and records:
 
 - draw calls, triangles, geometries, textures and the estimated texture memory;
 - frame interval and CPU time, p50 / p95 / p99;
 - the tier actually active and the pixel ratio;
-- the `powerPreference` the canvas context was created with and the renderer it actually got (read from the canvas's own context).
+- the `powerPreference` the canvas context was created with and the renderer it actually got (read from the canvas's own context);
+- the chapter and the progress the stop landed on (PF-008).
 
 It writes `.review/<ID>/numbers.json` and `numbers.md` with the WebGL renderer (hardware or software), the visitor-default run's renderer and whether it is the same GPU, and the machine: `Win32_ComputerSystem` manufacturer and model, CPU, memory, `Win32_VideoController` names. It warns loudly if the measured runs' renderer does not name AMD (D-40: the reference laptop is measured on its integrated Radeon).
 
 Headed Chromium paces animation frames to the display, so the frame intervals are vsync-capped: multiples of the refresh interval. The CPU time per frame shows the headroom under that cap.
 
-### Native scroll
-_To be filled in._
+### Native scroll (PF-008)
 
-### One source of truth for progress
-_To be filled in._
+The page has its real height and the browser scrolls it. Nothing blocks or takes over wheel, touch or keyboard scrolling. Everything in this section runs only where the 3D layer is built in (not the production deployment, D-39), only in a non-static tier, and only on the home page. Everywhere else – other routes, the static tier, reduced motion, simple view, production – scrolling is the browser's own: no smoothing, no spine, no chapter mark, and the nav links are plain anchors.
 
-### Chapters are modules
-_To be filled in._
+**The scroll spine** (`src/components/journey/scroll/scroll-spine.tsx`) is part of the lazy journey chunks: gsap, ScrollTrigger and Lenis load with three.js after the page is interactive, never in a route's first-load JS. JourneyCanvas renders it next to the canvas, and it re-runs on every client navigation (`useGSAP` from `@gsap/react` with the pathname as dependency, `revertOnUpdate`). It starts only when every chapter's section is there **and shown**: Next.js keeps the previous route's DOM mounted but hidden for an instant Back, so on a case study the home sections exist, invisible (sections present but hidden are polled for up to 60 frames, for the commit that shows them again).
+
+On the home page it:
+
+- creates one ScrollTrigger over the whole page (start 0, end `"max"`). Its `onUpdate` turns each scroll tick into `progress`, `chapter` and `chapterProgress` in the scroll store; its `onRefresh` re-measures the sections. A ResizeObserver on `<body>` (fonts, images, extra scroll lengths, anything that changes the page's height) asks for a refresh; a window `resize` (a phone's address bar, a rotation) re-measures at once.
+- starts Lenis where the primary pointer is fine (mouse, trackpad – `src/lib/journey/scroll-mode.ts`), driven by gsap's ticker (`lenis.raf`), with `ScrollTrigger.update` on each Lenis scroll, the integration the installed Lenis documents;
+- extends each chapter's section by its extra scroll length (registry, below), as `padding-bottom: calc(n * 100svh)`;
+- turns clicks on same-page links to a chapter section into smooth jumps (below);
+- publishes the current chapter for the navigation.
+
+Its teardown undoes all of it: the trigger killed, Lenis destroyed (its listeners and the `lenis` class on `<html>` removed), gsap's ticker restored, extra heights and added `tabindex` removed, the chapter cleared.
+
+**Smoothing: Lenis by default.** Lenis 1.3.28 smooths wheel input only (`smoothWheel: true`, `syncTouch: false`, `wheelMultiplier: 1`, `allowNestedScroll: true`, `anchors: false`, `lerp` from `scroll.tuning.ts`, 0.1 by default; its stylesheet is not used). It moves the page by exactly the wheel's delta (pixel-mode wheels: Chromium, Safari; Firefox's line-mode deltas use Lenis's own line height of 16.7 px), toward the same end position, never snapping. Keyboard (arrows, Page Up/Down, Space, Home, End), the scrollbar, find-in-page and touch stay native; Lenis follows those native scrolls. Measured (`e2e/scroll.spec.ts`): four wheel notches of 120 px move the page 480 px with Lenis and 480 px natively.
+
+Touch-first devices (coarse primary pointer: phones, tablets) get no Lenis: touch keeps native momentum scrolling, and Lenis would add non-passive touch listeners to the page.
+
+**`?smooth=off`** (testing and comparison; honoured only where `JOURNEY_TIER_OVERRIDE` is on, never on production): no Lenis, native scrolling everywhere. Wherever Lenis is not running (this override, touch-first devices) the camera eases toward the scroll position instead: a critically damped spring integrated exactly (`src/lib/journey/damping.ts`), so the result after a given time does not depend on the frame rate (unit-tested at 30, 60, 144 and 240 fps). Its stiffness is `scrollTuning.cameraDamping` (6 rad/s). The owner compares both on the preview.
+
+**Listeners.** Every scroll, wheel, touch and key listener the site adds is passive or never calls `preventDefault`, except Lenis's own wheel handler while Lenis runs (it moves the page itself). The spine's own listeners: a passive window `resize`, a passive `scrollend` while a native smooth jump runs, and a capture-phase `click` on the document (it cancels only the click's navigation to a chapter anchor). ScrollTrigger registers only passive listeners (`wheel`, `scroll`, `touchstart`, `touchcancel`). Lenis registers on `window`: `wheel`, `touchstart`, `touchmove`, `touchend` with `passive: false`, plus `scroll`, `scrollend` (capture), `pointerdown` and `resize`. Of these only the wheel handler calls `preventDefault`; with `syncTouch` off its touch handlers return before it. `e2e/scroll.spec.ts` wraps `addEventListener` and `Event.prototype.preventDefault` before any page script runs, drives wheel, keys (and touch gestures on the phone project), and requires no `preventDefault` at all with `?smooth=off` and on touch, and only Lenis's wheel handler with Lenis on (prints `[listener audit]`).
+
+**Jumps.** In the non-static tiers a click (or Enter) on a same-page link to a chapter section – the navigation's `/#about` …, on any query – scrolls there smoothly (Lenis `scrollTo`, or the browser's smooth scroll with `?smooth=off` and on touch), lands at the chapter's start (the section's top just below the fixed header, the browser's own anchor landing via `scroll-padding-top`), updates the URL with `history.pushState(null, "", "#about")` (Next.js's documented integration) and moves focus to the section (`tabindex="-1"` added for the jump, removed with the spine). The links stay real anchors: without JavaScript and in the static tier they are plain anchor links. Under reduced motion the static tier applies (PF-007), so a jump is the browser's instant anchor jump; the spine itself also jumps instantly when reduced motion is on.
+
+**Deep links and return.** A cold load of `/#about` lands where the browser puts the anchor; the spine measures and the store is right from its first update. A client navigation to `/#about` (Next.js scrolls to the hash) starts the spine on the new page the same way. Back from a case study: Next.js shows the kept home page again and the browser restores the scroll position; the spine starts there. A reload keeps the position (the browser's scroll restoration). In each case the camera snaps to the pose for that position (the store's epoch, below): no fly-through from the start. With extra scroll lengths set, a deep link lands again on its chapter's start after they are applied.
+
+**DOM sections over the canvas.** In the non-static tiers every home section is see-through: the canvas shows behind the whole home page. Each banner's still goes through `TierBackdrop`: not rendered (inside `<noscript>`, never downloaded) on a render tier, drawn as in stage 1 in the static tier. The banner box stays (its aspect ratio is the canvas's window) with the label and h2 at its foot. While the canvas is mounted (`<html data-journey-canvas>`, set by JourneyCanvas) the heading's strip and the section's content stand on the **canvas scrim**: `canvas:canvas-scrim`, the background colour at 90 % (`@utility canvas-scrim` and `@custom-variant canvas` in `globals.css`). `src/styles/contrast-pairs.ts` proves every text colour on it at ≥ 4.5:1 against the worst case behind it, pure white – the brightest pixel the canvas can output at all – so the proof holds for any scene a later chapter brings (`contrast.test.ts` also keeps the stylesheet's 90 % equal to the value the proof uses). The hero keeps PF-007's arrangement without a scrim (see "The test object" above). The footer is opaque in builds with the layer. The static tier and production render the stage 1 sections exactly (unit-tested in `journey-switch.test.tsx`).
+
+### One source of truth for progress (PF-008)
+
+`src/lib/journey/scroll-store.ts`: a vanilla zustand store beside the tier store, written only by the spine. The frame loop reads it with `getState()`; nothing re-renders through React while the page scrolls (`e2e/scroll.spec.ts` counts the renders of every journey component – `window.__journey.renders` – across a full scroll down and up and requires no change).
+
+| Field | Meaning |
+|---|---|
+| `progress` | `scroll position / (document scroll height − viewport height)`, clamped: exactly 0 at the top and exactly 1 at the bottom (within half a pixel of a fractional end); 0 on a page that does not scroll (`scrollToProgress`, `src/lib/journey/scroll-math.ts`) |
+| `chapter`, `chapterIndex` | the chapter the scroll position lies in |
+| `chapterProgress` | 0–1 within that chapter |
+| `active`, `mode` | the spine runs on this page; `lenis` or `native` |
+| `epoch` | bumped whenever the spine starts on a page (a cold load, a deep link, a return): the camera snaps instead of easing |
+
+**Chapter boundaries come from the measured DOM sections** (`chapterBoundaries`, `locateChapter`): chapter *i* starts where its section's top meets the bottom of the fixed header (`top − scroll-padding-top`, which is where the browser's own anchor jump lands; the first chapter at 0), and runs to the next chapter's start, the last one to the page end. A position up to 1 px before a boundary counts as the next chapter, so a jump that lands on a whole pixel stays in the chapter it aimed at. All of it is recomputed on every ScrollTrigger refresh. Unit-tested (`scroll-math.test.ts`: the ends, clamping, zero height, fractional ends, extra lengths); `e2e/scroll.spec.ts` checks the ends at 360 × 780, 390 × 844, 1440 × 900 and 1920 × 1080, after a resize and a phone rotation, and that the boundaries equal the sections as loaded, after a resize and with extra scroll lengths (`[scroll ends]`, `[chapter boundaries]`).
+
+**The navigation's current chapter.** The store is in the lazy chunk, the navigation in every page's first-load JS, which on production must not carry journey code. So the spine mirrors the chapter's section id onto `<html data-journey-section="about">` and fires `journey:chapter` on `window` on each change (`src/lib/journey/chapter-bridge.ts`); `useJourneyChapter()` (`src/components/journey/gate.tsx`, compiled only where the layer is built in) reads it with `useSyncExternalStore`, so the navigation re-renders on a chapter change only. The link of that section is `aria-current="location"` (the page's own link stays `aria-current="page"`), shown in full text colour with a trace-accent underline (not colour alone; `Link`'s `nav` variant, those classes only in builds with the layer). The hero and the projects have no link of their own (Work opens `/work`), so nothing is marked there.
+
+### Chapters are modules (PF-008)
+
+`src/lib/journey/chapters.ts` is the one chapter registry, in BRIEF §3 order (D-24): `port` (#top), `bus` (#about), `memory` (#experience), `array` (#work), `core` (#skills), `uplink` (#contact). Each entry has its id, its section id, its extra scroll length (viewport heights, default 0, added as extra section height only in the non-static tiers), its path marker (`CH_<id>`) and a tuning object for the chapter's own values. Boot (PF-012) is not a scroll chapter. `chapters.test.ts` keeps the registry equal to BRIEF §3 and to the content's home sections. The extra scroll lengths and the smoothing values (`scroll/scroll.tuning.ts`) are in the dev tuning panel ("Scroll (PF-008)", leva, dev-only) with Export values.
+
+**The camera rig** (`src/components/journey/scene/camera-rig.tsx`, `path-asset.ts`) plays the journey camera path of the asset contract (STANDARDS §6) from one fixed folder, `public/assets/world/` (`JOURNEY_PATH_DIR`; PF-009 may move it):
+
+- `world-path.glb`: the camera is found by name (`CAM_journey`, else the first perspective camera, with a development warning), the clip by name (`journey`, else the first). three's `GLTFLoader` parses it; every transform track of the clip is sampled through its own interpolant (linear, slerp, glTF cubic spline), so whatever the exporter animates (the camera node or its parents) moves the camera.
+- `world-path.json`: `{ fps, firstFrame, lastFrame, markers: { CH_port: n, … } }`.
+
+**Marker mapping** (`src/lib/journey/path-mapping.ts`, unit-tested): inside chapter *i*, `chapterProgress` maps linearly to the frames between `CH_<i>` and the next chapter's marker; the last chapter runs to `lastFrame`. So the camera reaches each chapter's marker exactly when its DOM section starts. Missing markers (a development warning) and markers out of order or outside the frame range (a development error) fall back to even spacing over the whole range. A frame becomes clip time from the clip's first key (`clipStart + (frame − firstFrame) / fps`), so it does not matter whether the exporter starts the keys at 0 s or at `firstFrame / fps`.
+
+Each frame (priority 0, before the render): the frame for the store's chapter and progress, eased or not (above), the clip sampled at that time, and the animated camera's world transform (position and rotation) and vertical FOV, near and far copied to the scene's camera. Nothing is allocated. On a window resize React Three Fiber updates the aspect and the vertical FOV stays: phone framing is PF-010's decision. The canvas draws its first frame only once the path is settled, so a mid-page arrival shows the right pose from the first frame. If the files cannot be loaded the camera keeps the port pose (a development warning).
+
+**Replacing the path needs no code change.** `src/components/journey/scene/path-swap.test.ts` loads the committed stand-in and a second generated pair (other fps, frame range, time origin, position, length and markers) and checks that the camera reaches each pair's own markers and last frame; `e2e/scroll.spec.ts` serves the second pair in place of the files and checks the rig's frame range, chapter starts and pose in the browser (`[path swap]`).
+
+**The stand-in path** (until PF-010): `npm run path:standin` (`scripts/make-standin-path.mjs`) writes both files – a slow 12 s glide, 30 fps, unevenly spaced markers – see `docs/assets.md`. The six stand-in markers (`scene/standin-markers.tsx`) are dark pillars, one per chapter, placed from the path itself ahead of and to the right of each chapter's start pose: one instanced mesh, unlit `surface-raised`. Plumbing, not a look; PF-010 replaces both with the Blender path and the grey-box world.
+
+**Review and numbers stops.** `npm run review:shots` and `npm run numbers` take chapter stops `<chapter>:start|mid|end` (`scripts/review/targets.mjs`): start = the chapter's start + 1 px, mid = halfway to the next start, end = the next start − 1 px (the page end for the last), resolved from the live registry and the measured sections at capture time (`window.__journey.scroll()`), after the camera has arrived. Both keep `?gpu=low-power` and the real-GPU checks. The numbers record the chapter and progress of each stop.
 
 ### Content is typed data
 `src/content/` (PF-006). The data files in `src/content/data/` hold every word from BRIEF §8: identity and about, experience, education, skills, services, projects, contact-flow options, plus site frame and interface labels. `src/content/schema.ts` defines each shape with zod: strict objects, BRIEF limits, https links, `YYYY-MM` dates, and featured projects needing an outcome. `src/content/index.ts` parses everything once when first imported and exports typed values (`identity`, `projects`, `featuredProjects`, `getProject()`, `getHomeSection()` …).

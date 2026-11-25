@@ -5,15 +5,17 @@ import { useStore } from "zustand";
 import { changeMountedWindows, changeVisibleWindows, journeyStore } from "@/lib/journey/store";
 
 /**
- * The backdrop of a section the canvas shows through (today: the hero). Its parent section is a
- * "canvas window": while it intersects the viewport the canvas renders; when no window does, the
- * canvas is fully covered and the frame loop pauses (STANDARDS.md §4).
+ * The backdrop of a section the canvas shows through: the hero's Port still, and (PF-008) every
+ * other home section's banner still. Its section (the nearest `[data-chapter]` ancestor, else its
+ * parent) is a "canvas window": while it intersects the viewport the canvas renders; when no window
+ * does, the canvas is fully covered and the frame loop pauses (STANDARDS.md §4).
  *
- * The backdrop itself (the Port still and its scrims) is drawn only in the static tier. Before the
- * tier is known – on the server and during hydration – and on every render tier it sits inside
+ * The backdrop itself (the still and its scrims) is drawn only in the static tier. Before the tier
+ * is known – on the server and during hydration – and on every render tier it sits inside
  * <noscript>: browsers with JavaScript never parse it, so the still is not downloaded, and browsers
- * without JavaScript draw it exactly as the stage 1 hero. When the tier turns out static (one of
- * the triggers in docs/architecture.md), it is rendered and loads at once at high priority.
+ * without JavaScript draw it exactly as the stage 1 page. When the tier turns out static (one of
+ * the triggers in docs/architecture.md), it is rendered (the hero's at once at high priority, the
+ * banners' lazily).
  */
 export function TierBackdrop({ children }: { children: ReactNode }) {
   const tier = useStore(journeyStore, (s) => s.tier);
@@ -25,7 +27,7 @@ export function TierBackdrop({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const section = ref.current?.parentElement;
+    const section = ref.current?.parentElement?.closest<HTMLElement>("[data-chapter]") ?? ref.current?.parentElement;
     if (!section || typeof IntersectionObserver === "undefined") return;
     let inView = false;
     const observer = new IntersectionObserver((entries) => {

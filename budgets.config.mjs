@@ -12,9 +12,10 @@ export const budgets = {
     gzipBytes: 200 * KB,
   },
 
-  // `npm run size` (PF-007): the lazy 3D chunk – every JavaScript file the canvas loader pulls in
-  // after the page is interactive (three, React Three Fiber, the scene). Gzip, like first-load JS.
-  // First-load JS of every route must not contain three.js or React Three Fiber at all.
+  // `npm run size` (PF-007, PF-008): the lazy journey chunks – every JavaScript file the canvas
+  // loader pulls in after the page is interactive (three, React Three Fiber, the scene, and since
+  // PF-008 the scroll spine's gsap + ScrollTrigger + Lenis and the camera rig), summed. Gzip, like
+  // first-load JS. First-load JS of every route must contain none of them.
   threeDChunk: {
     gzipBytes: 400 * KB,
   },

@@ -7,10 +7,24 @@ export type LinkVariant = "inline" | "nav" | "external";
 export type LinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
   href: string;
   variant?: LinkVariant;
-  /** Nav links: marks the link for the page being shown. */
-  current?: boolean;
+  /**
+   * Nav links: `true` / "page" marks the link for the page being shown (`aria-current="page"`);
+   * "location" marks the home section the visitor is in (`aria-current="location"`, PF-008).
+   */
+  current?: boolean | "page" | "location";
   children: ReactNode;
 };
+
+/**
+ * The current-chapter mark (PF-008): the link in full text colour with a trace-accent underline –
+ * a shape, not only a colour. Only where the 3D layer is built in (the mark is set only there), so
+ * the production deployment's markup stays the stage 1 markup.
+ */
+const LOCATION_STYLE =
+  process.env.JOURNEY_LAYER === "on"
+    ? " aria-[current=location]:text-text aria-[current=location]:underline aria-[current=location]:decoration-accent-trace " +
+      "aria-[current=location]:decoration-2 aria-[current=location]:underline-offset-8"
+    : "";
 
 const styles: Record<LinkVariant, string> = {
   inline:
@@ -18,7 +32,8 @@ const styles: Record<LinkVariant, string> = {
     "transition-colors duration-fast ease-signal hover:decoration-accent-signal",
   nav:
     "label-mono inline-flex min-h-tap items-center text-text-muted transition-colors duration-fast ease-signal " +
-    "hover:text-text aria-[current=page]:text-accent-signal",
+    "hover:text-text aria-[current=page]:text-accent-signal" +
+    LOCATION_STYLE,
   external:
     "inline-flex items-center gap-1 text-text underline decoration-line-strong decoration-1 underline-offset-4 " +
     "transition-colors duration-fast ease-signal hover:text-accent-signal hover:decoration-accent-signal",
@@ -58,8 +73,9 @@ export function Link({ href, variant = "inline", current, className, children, .
     );
   }
 
+  const ariaCurrent = current === "location" ? "location" : current ? "page" : undefined;
   return (
-    <NextLink href={href} aria-current={current ? "page" : undefined} className={classes} {...rest}>
+    <NextLink href={href} aria-current={ariaCurrent} className={classes} {...rest}>
       {children}
     </NextLink>
   );

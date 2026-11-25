@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrastRatio, mixSrgb } from "@/lib/contrast";
 import { parseColorTokens } from "@/lib/design-tokens";
-import { CONTRAST_PAIRS, MIN_RATIO } from "./contrast-pairs";
+import { CANVAS_SCRIM_ALPHA, CONTRAST_PAIRS, MIN_RATIO, pairBackground } from "./contrast-pairs";
 
 // Tokens are read from the stylesheet itself – the one source.
 const css = readFileSync(path.resolve(__dirname, "../app/globals.css"), "utf8");
@@ -35,13 +35,24 @@ describe("WCAG contrast", () => {
     expect(contrastRatio(colors["accent-trace"], colors.background)).toBeCloseTo(7.47, 1);
   });
 
-  it.each(CONTRAST_PAIRS.map((p) => [`${p.fg} on ${p.bg} (${p.kind}: ${p.use})`, p] as const))(
-    "%s meets its minimum",
-    (_label, pair) => {
-      expect(colors[pair.fg], `unknown token ${pair.fg}`).toBeDefined();
-      expect(colors[pair.bg], `unknown token ${pair.bg}`).toBeDefined();
-      const ratio = contrastRatio(colors[pair.fg], colors[pair.bg]);
-      expect(ratio).toBeGreaterThanOrEqual(MIN_RATIO[pair.kind]);
-    },
-  );
+  it.each(
+    CONTRAST_PAIRS.map((p) => [`${p.fg} on ${p.bg}${p.over ? ` at ${p.over.alpha * 100} % over ${p.over.what}` : ""} (${p.kind}: ${p.use})`, p] as const),
+  )("%s meets its minimum", (_label, pair) => {
+    expect(colors[pair.fg], `unknown token ${pair.fg}`).toBeDefined();
+    expect(colors[pair.bg], `unknown token ${pair.bg}`).toBeDefined();
+    const ratio = contrastRatio(colors[pair.fg], pairBackground(pair, colors, mixSrgb));
+    expect(ratio).toBeGreaterThanOrEqual(MIN_RATIO[pair.kind]);
+  });
+});
+
+describe("canvas scrim (PF-008)", () => {
+  it("the stylesheet's canvas-scrim is the background colour at the alpha the pairs are proven with", () => {
+    const rule = /@utility canvas-scrim\s*\{\s*background-color:\s*color-mix\(in srgb,\s*var\(--color-background\)\s*([\d.]+)%,\s*transparent\);\s*\}/.exec(css);
+    expect(rule, "the canvas-scrim utility in globals.css").not.toBeNull();
+    expect(Number(rule![1]) / 100).toBe(CANVAS_SCRIM_ALPHA);
+  });
+
+  it("only applies while the canvas is mounted (the canvas: variant)", () => {
+    expect(css).toMatch(/@custom-variant canvas \(&:where\(\[data-journey-canvas\] \*\)\);/);
+  });
 });

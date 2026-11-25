@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore, type ComponentType } from "react";
 import { useStore } from "zustand";
-import { installJourneyDebug } from "@/lib/journey/debug";
+import { countRender, installJourneyDebug } from "@/lib/journey/debug";
 import { probeWebGl2, readCapabilitySignals, readStaticSignals, REDUCED_MOTION_QUERY, type WebGl2Probe } from "@/lib/journey/signals";
 import { canvasSeen, enterRenderTier, goStatic, journeyStore, setPageVisible, viewStore } from "@/lib/journey/store";
 import { chooseGpuPreference, decideTier, isRenderTier, parseTierOverride, type GpuPreference, type RenderTier } from "@/lib/journey/tiers";
@@ -19,11 +19,12 @@ import type { JourneyCanvasProps } from "./scene/journey-canvas";
  *      ends here: no canvas, no download (tiers.ts `decideTier` has the order and the bypasses).
  *   2. Otherwise the start tier (capabilities, never above the session's floor) goes into the
  *      tier store, and once the page has loaded, the browser is idle and the page has a section
- *      the canvas shows through (the home hero; not /work or /resume), the 3D chunk is imported
- *      (three, React Three Fiber and the scene: scene/journey-canvas.tsx). If that fails the
- *      visitor gets the static tier, without an error overlay.
+ *      the canvas shows through (the home page's sections; not /work or /resume), the 3D chunk is
+ *      imported (three, React Three Fiber, the scene, and – since PF-008 – the scroll spine with
+ *      gsap, ScrollTrigger and Lenis: scene/journey-canvas.tsx). If that fails the visitor gets the
+ *      static tier, without an error overlay.
  *   3. The canvas fades in behind the page once its first frame is drawn, and only while a
- *      see-through section (the hero) is in view.
+ *      see-through section is in view.
  *
  * Simple view and reduced motion are watched: turning either on unmounts the canvas (which frees
  * everything on the GPU); turning it off runs the checks again.
@@ -86,6 +87,7 @@ function decideAndStoreTier(): void {
 }
 
 export function JourneyLayer() {
+  countRender("JourneyLayer");
   const tier = useStore(journeyStore, (s) => s.tier);
   const seen = useStore(viewStore, (s) => canvasSeen(s));
   const hasWindow = useStore(viewStore, (s) => s.mounted > 0);

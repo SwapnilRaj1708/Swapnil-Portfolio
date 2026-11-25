@@ -12,9 +12,9 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StatusChip } from "@/components/ui/status-chip";
 import { about, identity, site } from "@/content";
-import { contrastRatio } from "@/lib/contrast";
+import { contrastRatio, mixSrgb } from "@/lib/contrast";
 import { parseColorTokens } from "@/lib/design-tokens";
-import { CONTRAST_PAIRS, MIN_RATIO } from "@/styles/contrast-pairs";
+import { CONTRAST_PAIRS, MIN_RATIO, pairBackground } from "@/styles/contrast-pairs";
 
 export const metadata: Metadata = { title: "Style guide" };
 
@@ -114,20 +114,22 @@ export default function StyleguidePage() {
             </thead>
             <tbody>
               {CONTRAST_PAIRS.map((p) => {
-                const ratio = contrastRatio(colors[p.fg], colors[p.bg]);
+                const background = pairBackground(p, colors, mixSrgb);
+                const ratio = contrastRatio(colors[p.fg], background);
                 const pass = ratio >= MIN_RATIO[p.kind];
                 return (
-                  <tr key={`${p.fg}/${p.bg}/${p.kind}`}>
+                  <tr key={`${p.fg}/${p.bg}/${p.kind}/${p.use}`}>
                     <td className="border-b border-line py-2 pr-4">
                       <span
                         className="inline-block rounded-xs px-2 py-1"
-                        style={{ color: `var(--color-${p.fg})`, backgroundColor: `var(--color-${p.bg})` }}
+                        style={{ color: `var(--color-${p.fg})`, backgroundColor: p.over ? background : `var(--color-${p.bg})` }}
                       >
                         Aa
                       </span>
                     </td>
                     <td className="border-b border-line py-2 pr-4 font-mono">
                       {p.fg} / {p.bg}
+                      {p.over ? ` ${p.over.alpha * 100} % over ${p.over.behind}` : ""}
                     </td>
                     <td className="border-b border-line py-2 pr-4 font-mono">
                       {ratio.toFixed(2)}:1 {pass ? "✓" : "✗ FAIL"}
