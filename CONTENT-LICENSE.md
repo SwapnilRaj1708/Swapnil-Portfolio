@@ -14,8 +14,12 @@ This applies in particular to these folders, as they are added:
 
 | Folder | Holds |
 |---|---|
-| `content/` | site content (text, project data) and the resume |
-| `public/` (media files: images, video, documents) | images, renders, video and downloads served by the site |
+| `src/content/data/` | site text (about, career, project data and every other word about Swapnil Raj and the work) |
+| `public/media/` | images and renders served by the site (stills, project images) |
+| `public/resume/` | the resume (PDF) |
+| `src/app/` (`opengraph-image.tsx` in `src/app/`, `src/app/work/` and `src/app/resume/`) | the social images |
 | `public/models/` and any other folder of `.glb` / texture files | 3D models and their textures |
+
+The project screenshots of client and employer work belong to their respective owners, are shown with their permission, and are not covered by this notice or by the MIT licence.
 
 Third-party material used by the site keeps its own licence; see [`docs/licences.md`](docs/licences.md).

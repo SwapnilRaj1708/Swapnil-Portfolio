@@ -8,12 +8,13 @@ Every word about the owner lives in typed data under `src/content/data/`, checke
 
 | File | Holds | Shown on |
 |---|---|---|
-| `src/content/data/identity.ts` | `identity`: name, role, pitch (≤ 12 words), location, time zone, availability, email, GitHub and LinkedIn · `about`: two or three beats (≤ 120 words, provisional) | hero, header, footer, About, Contact, `/resume` |
+| `src/content/data/identity.ts` | `identity`: name, role, pitch (≤ 12 words), location, time zone, availability, email, GitHub and LinkedIn · `about`: two or three beats (≤ 120 words, provisional) | hero, header, footer, About (text and facts readout), Contact, `/resume` |
 | `src/content/data/career.ts` | `experience` (roles, newest first) · `education` · `skills` (≤ 4 groups of ≤ 6) · `services` (≤ 3) | Experience, Skills and Contact sections on `/`; `/resume` |
 | `src/content/data/projects.ts` | `projects`: every project, featured first | `/` (featured), `/work`, `/work/<slug>` |
 | `src/content/data/contact-flow.ts` | the contact flow's questions and options (BRIEF §6, §8) and each intent's `draft` message | the contact flow in `#contact` on `/`; the email to the owner |
 | `src/content/data/site.ts` | `site`: navigation, copyright, resume PDF path, page titles and descriptions · `homeSections`: chapter → section id, index label, heading | every page |
 | `src/content/data/ui.ts` | interface words: headings, button and link labels (no facts about the owner) | every page |
+| `src/content/data/error-copy.ts` | the error pages' words (PF-029); a plain object the client error boundaries import directly, included in `ui.ts` as `ui.error` | `error.tsx`, `global-error.tsx` |
 | `src/content/data/stills.ts` | `stills`: one Blender still per chapter in two crops (`wide`, `portrait`: file, width, height) · `socialImage`: the social images' background (PF-028) | hero and section banners on `/`; social images |
 | `src/content/schema.ts` | the zod schemas: what each field must be | – |
 | `src/content/index.ts` | parses everything once and exports it (`identity`, `projects`, `featuredProjects`, `getProject()` …) | – |
@@ -88,6 +89,7 @@ The home page stands on Blender stills: the Port behind the hero, and one banner
 ## Edit other content
 
 - **Text** (pitch, about, roles, skills, services): edit the data file; the schema enforces the BRIEF limits.
+- **Facts readout** (beside the About text, D-38): no data of its own. ROLE is `identity.role`, BASED IN is `identity.location` and `identity.timeZone`, STATUS is `identity.availability`, CORE STACK is the first three items of the `Frontend` skill group in `career.ts` (reorder that group to change it). The row labels are `ui.about` in `ui.ts`. The site shows no photo of the owner (D-38).
 - **Navigation:** `site.nav`, in order. `quick: true` keeps a link in the header on phones (Work and Resume: one tap away from every page, BRIEF §2).
 - **Page titles and descriptions:** `site.meta` (home, `/work`, `/resume`, 404). A case study uses its `name` and `oneLine`. `titleTemplate` adds " – Swapnil Raj".
 - **Home sections:** `homeSections` maps each journey chapter to its section id (`#top`, `#about`, `#experience`, `#work`, `#skills`, `#contact`, BRIEF §3) and its index label. The order of the sections themselves is in `src/app/page.tsx` (D-24).

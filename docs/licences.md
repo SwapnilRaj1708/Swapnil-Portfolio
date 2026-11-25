@@ -1,6 +1,6 @@
 # Third-party licences
 
-Every third-party package, font, texture or other asset, added in the same PR that brings it in. Licences as stated in the installed package's `package.json`.
+Every third-party package, font, texture, service or other asset, added in the same PR that brings it in. Licences as stated in the installed package's `package.json` (and its `LICENSE` file). The owner's own content is listed under [Own content](#own-content-not-third-party) below.
 
 | Name | Source | Licence | Date | Where used |
 |---|---|---|---|---|
@@ -8,6 +8,8 @@ Every third-party package, font, texture or other asset, added in the same PR th
 | React (`react`, `react-dom`) | npm | MIT | 2026-11-21 | UI library |
 | Tailwind CSS (`tailwindcss`, `@tailwindcss/turbopack`) | npm | MIT | 2026-11-21 | Styling (build time) |
 | TypeScript (`typescript`) | npm | Apache-2.0 | 2026-11-21 | Type checking (build time) |
+| ESLint (`eslint` 9.39.5, `eslint-config-next` 16.4.6 with the plugins it brings: `@next/eslint-plugin-next`, `eslint-plugin-react`, `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`, `eslint-plugin-import`, `typescript-eslint`) | npm | MIT | 2026-11-21 | Linting (dev only) |
+| Type definitions (`@types/node` 20.19.43, `@types/react` 19.3.0, `@types/react-dom` 19.3.0) | npm (DefinitelyTyped) | MIT | 2026-11-21 | Type checking (dev only) |
 | Vitest (`vitest`) | npm | MIT | 2026-11-21 | Unit test runner (dev only) |
 | `@vitejs/plugin-react` | npm | MIT | 2026-11-21 | JSX/React transform for Vitest (dev only) |
 | jsdom (`jsdom`) | npm | MIT | 2026-11-21 | Browser-like DOM for unit tests (dev only) |
@@ -19,7 +21,7 @@ Every third-party package, font, texture or other asset, added in the same PR th
 | Space Grotesk | Google Fonts, via `next/font/google` (files downloaded at build time and served by the site; the browser never contacts Google) | SIL OFL 1.1 | 2026-11-23 | Pairing A: headings – `/dev/type` preview only (pairing D is active, D-31) |
 | Inter | Google Fonts, via `next/font/google` (self-hosted as above) | SIL OFL 1.1 | 2026-11-23 | Pairing D (active, D-31): body text – `src/fonts/pairing-d.ts`; also pairing A on `/dev/type` |
 | Inter Medium, TrueType (`Inter-Medium.ttf`, Google Fonts static file v20) | `https://fonts.gstatic.com/s/inter/v20/…ttf`, downloaded at build time by `scripts/fetch-fonts.mjs` into git-ignored `src/fonts/vendor/inter/`, pinned by SHA-256 | SIL OFL 1.1 | 2026-11-24 | Social images (PF-028, `src/lib/social-image.tsx`): next/og reads TTF but not the WOFF2 that next/font uses. Read at build time only and drawn into the PNGs; browsers never load the file |
-| sharp (`sharp` 0.35.5, with `@img/sharp-*` prebuilt libvips) | npm, already installed as a dependency of `next` (its image optimiser); not added by this repo | Apache-2.0 (sharp); LGPL-3.0-or-later (the bundled libvips binary) | 2026-11-24 | Build and test tooling only (PF-028): `scripts/encode-stills.mjs` encodes the Blender stills and icons; `src/styles/still-contrast.test.ts` decodes them. next/image uses it on the server; nothing of it reaches the browser |
+| sharp (`sharp` 0.35.5, with `@img/sharp-*` prebuilt libvips) | npm, already installed as a dependency of `next` (its image optimiser); not added by this repo | Apache-2.0 (sharp); LGPL-3.0-or-later (the bundled libvips binary) | 2026-11-24 | Build and test tooling only (PF-028): `scripts/encode-stills.mjs` encodes the Blender stills and icons; `src/styles/still-contrast.test.ts` decodes the stills. next/image uses it on the server; nothing of it reaches the browser |
 | JetBrains Mono | Google Fonts, via `next/font/google` (self-hosted as above) | SIL OFL 1.1 | 2026-11-23 | Pairing D (active, D-31): labels and readouts – `src/fonts/pairing-d.ts`; also pairing A on `/dev/type` |
 | Geist | Google Fonts, via `next/font/google` (self-hosted as above) | SIL OFL 1.1 | 2026-11-23 | Pairing B: headings and body – `/dev/type` preview only |
 | Geist Mono | Google Fonts, via `next/font/google` (self-hosted as above) | SIL OFL 1.1 | 2026-11-23 | Pairing B: labels – `/dev/type` preview only |
@@ -30,3 +32,17 @@ Every third-party package, font, texture or other asset, added in the same PR th
 | zod (`zod`) | npm | MIT | 2026-11-23 | Content schemas: build-time validation of `src/content/`; server-side check of contact submissions (`src/lib/contact/submission.ts`). Server only, not in the browser bundle |
 | Resend Node.js SDK (`resend` 6.39.0, with its dependencies `postal-mime` 2.7.6 and `standardwebhooks` 1.1.1) | npm | MIT (`resend`, `standardwebhooks`); MIT-0 (`postal-mime`) | 2026-11-23 | Contact flow delivery (PF-019, D-18, D-33): `src/lib/contact/resend-mailer.ts`, server only (POST `/api/contact`). The Resend service itself is the owner's account |
 | Stand-in project screenshots (Twizzr, PG Gurukul, CREO, EngineerHUB website, Windows 10 Clone) | Captured by `npm run media:capture` from each project's public live homepage, 2026-11-23 | Third-party and client sites shown with the owner's clearance (BRIEF §8, 2026-11-21: every project "cleared: yes"; stand-in screenshots of the live sites allowed until the owner's media arrives). Marked `provisional: true` in the content | 2026-11-23 | `public/media/projects/<slug>/home.webp` – project cards and case studies; to be replaced by the owner's media (docs/content.md) |
+| Vercel Web Analytics (`@vercel/analytics` 2.0.1) | npm; the service is the owner's Vercel project | MIT | 2026-11-25 | Page views (D-19, PF-029): `<Analytics />` in `src/components/layout/site-analytics.tsx`, rendered only in the Vercel production deployment. Cookieless (no consent banner); loads its script from the site's own `/_vercel/insights/` path. The owner switches it on in Vercel |
+| Vercel Speed Insights (`@vercel/speed-insights` 2.1.0) | npm; the service is the owner's Vercel project | Apache-2.0 | 2026-11-25 | Real-visitor Web Vitals (D-19, PF-029): `<SpeedInsights />` beside Analytics, production deployment only, cookieless, script from `/_vercel/speed-insights/`. The owner switches it on in Vercel |
+| Resend (the mail service) | resend.com, the owner's account; sending domain swapnilraj.in verified by the owner (D-36) | Service terms (the owner's account) | 2026-11-24 | Delivers contact-flow messages to the owner (`src/lib/contact/resend-mailer.ts`); nothing of it reaches the browser |
+
+## Own content (not third-party)
+
+Everything below is © Swapnil Raj, all rights reserved – not under the MIT licence (`CONTENT-LICENSE.md`, D-21). Listed so every asset family the site ships is accounted for; per-file details are in [`docs/assets.md`](assets.md).
+
+| Family | Source | Where used |
+|---|---|---|
+| Written content (about, experience, projects, services, interface words) | The owner (BRIEF §8) – `src/content/data/` | Every page |
+| Stage 1 stills, social background and icons | The owner's Blender renders (`Blender Assets/stills/`), encoded by `npm run media:stills` | Home page banners and hero, social images, favicon and app icons |
+| Social images (`/opengraph-image`, `/work/opengraph-image`, `/resume/opengraph-image`) | Drawn at build time from the still background, the owner's name and role, and Inter Medium (OFL, above) | Link previews |
+| Resume PDF | The owner's current resume (D-27) – the only place a phone number appears | `/resume` download |

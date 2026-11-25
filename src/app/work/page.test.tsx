@@ -78,5 +78,6 @@ describe("/work", () => {
   it("has its own title and description from the content", () => {
     expect(metadata.title).toBe(site.meta.work.title);
     expect(metadata.description).toBe(site.meta.work.description);
+    expect(metadata.alternates?.canonical).toBe("/work");
   });
 });

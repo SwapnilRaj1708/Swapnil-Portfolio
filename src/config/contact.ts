@@ -3,13 +3,19 @@
  *
  * Environment (names in .env.example; values only in .env.local and in Vercel, never in the repo):
  *   RESEND_API_KEY      required to send; without it the endpoint answers 503 and nothing is sent
- *   CONTACT_EMAIL_FROM  optional sender, e.g. "Portfolio <hello@swapnilraj.in>" once the domain is
- *                       verified with Resend; default: Resend's test sender below, which can only
- *                       deliver to the Resend account owner's own address (the recipient here)
+ *   CONTACT_EMAIL_FROM  the sender on the verified domain (D-36), set by the owner in Vercel and
+ *                       .env.local; when it is missing or blank: Resend's test sender below, which
+ *                       can only deliver to the Resend account owner's own address (the recipient here)
  *
- * The recipient is the public email in the content (src/content/data/identity.ts).
+ * The recipient is the public email in the content (src/content/data/identity.ts); Reply-To is
+ * the visitor.
  */
 export const CONTACT_DEFAULT_FROM = "Portfolio <onboarding@resend.dev>";
+
+/** The sender address: CONTACT_EMAIL_FROM when set (not blank), else the test sender. */
+export function contactSender(env: Readonly<Record<string, string | undefined>>): string {
+  return env.CONTACT_EMAIL_FROM?.trim() || CONTACT_DEFAULT_FROM;
+}
 
 /**
  * Built-in rate limit, per server instance and best-effort: 5 submissions per client IP in any

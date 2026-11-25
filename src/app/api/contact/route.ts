@@ -1,10 +1,10 @@
 import {
-  CONTACT_DEFAULT_FROM,
   CONTACT_MAX_BODY_BYTES,
   CONTACT_MIN_ELAPSED_MS,
   CONTACT_RATE_LIMIT,
   CONTACT_SEND_TIMEOUT_MS,
   CONTACT_TIME_ZONE,
+  contactSender,
 } from "@/config/contact";
 import { contactFlow, identity, ui } from "@/content";
 import { handleContact } from "@/lib/contact/handler";
@@ -23,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
     flow: contactFlow,
     copy: { transmission: ui.transmission, email: ui.transmissionEmail },
     recipient: identity.email,
-    from: process.env.CONTACT_EMAIL_FROM || CONTACT_DEFAULT_FROM,
+    from: contactSender(process.env),
     mail: createResendMailer(process.env.RESEND_API_KEY, CONTACT_SEND_TIMEOUT_MS),
     limiter,
     minElapsedMs: CONTACT_MIN_ELAPSED_MS,

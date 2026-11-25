@@ -8,6 +8,7 @@ import { featuredProjects, moreProjects, site, ui } from "@/content";
 export const metadata: Metadata = {
   title: site.meta.work.title,
   description: site.meta.work.description,
+  alternates: { canonical: "/work" },
 };
 
 /** /work – every project, featured first (BRIEF.md §5, the fast lane). No WebGL. */

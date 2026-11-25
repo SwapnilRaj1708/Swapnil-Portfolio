@@ -30,7 +30,7 @@ function isStatus(value: string): value is ResultStatus {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { status } = await params;
   if (!isStatus(status)) return {};
-  return { title: COPY[status].title, description: COPY[status].body };
+  return { title: COPY[status].title, description: COPY[status].body, alternates: { canonical: `/contact/result/${status}` } };
 }
 
 /**

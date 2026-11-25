@@ -11,9 +11,11 @@
 //            image, the LCP limit (≤ 2.5 s) is checked this way – the simulation charges every
 //            script that finished before the image paint to it. LCP is gated only in this mode.
 //
-// Before launch the "is-crawlable" audit fails on purpose (noindex, nofollow – see
-// src/config/site.ts). The SEO gate leaves that one audit out, scored the way Lighthouse scores
-// a category, and the audit is printed on its own line as "expected before launch".
+// Where the build is not public the "is-crawlable" audit fails on purpose (noindex, nofollow –
+// see src/config/site.ts: only the Vercel production deployment is public, so every local build
+// is not). The SEO gate then leaves that one audit out, scored the way Lighthouse scores a
+// category, and the audit is printed on its own line as "expected while not public". A build
+// made with VERCEL_ENV=production is public and is gated on the full SEO category.
 //
 // Output: .lighthouseci/ (raw results) and .lighthouseci/reports/ (HTML + JSON per run),
 // both git-ignored.
@@ -81,13 +83,13 @@ async function main() {
   const chromePath = chromium.executablePath();
   const server = await startProdServer();
   console.log(`Serving the production build at ${server.origin}`);
-  /** Launch state as the build serves it (X-Robots-Tag is sent only while SITE_LAUNCHED is false). */
+  /** Launch state as the build serves it (X-Robots-Tag is sent only while the build is not public). */
   let launched = true;
   try {
     const probe = await fetch(server.origin);
     await probe.arrayBuffer();
     launched = !/noindex/i.test(probe.headers.get("x-robots-tag") ?? "");
-    console.log(`Launch switch as served: ${launched ? "launched" : "not launched (noindex, nofollow)"}`);
+    console.log(`Launch switch as served: ${launched ? "public" : "not public (noindex, nofollow)"}`);
     await runLhci([
       "collect",
       ...routes.map((r) => `--url=${new URL(r, server.origin).href}`),
@@ -159,8 +161,8 @@ async function main() {
       const audit = lhrs[0].audits[EXPECTED_BEFORE_LAUNCH];
       const passed = lhrs.every((l) => l.audits[EXPECTED_BEFORE_LAUNCH].score === 1);
       console.log(
-        `  ${EXPECTED_BEFORE_LAUNCH.padEnd(16)} ${passed ? "passed" : "failed"} – expected before launch ` +
-          `(SITE_LAUNCHED is false: noindex, nofollow). "${audit.title}"`,
+        `  ${EXPECTED_BEFORE_LAUNCH.padEnd(16)} ${passed ? "passed" : "failed"} – expected while not public ` +
+          `(not the Vercel production build: noindex, nofollow). "${audit.title}"`,
       );
     }
     console.log("");

@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants";
-import { NOINDEX_DIRECTIVE, SITE_LAUNCHED } from "./src/config/site";
+import { NOINDEX_DIRECTIVE, SITE_PUBLIC } from "./src/config/site";
 import { checkContentFiles } from "./src/content/check-files";
 import { content } from "./src/content/index";
 
@@ -40,8 +40,10 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // Launch switch (src/config/site.ts): noindex on every response unless this build is public
+  // (SITE_LAUNCHED and the Vercel production deployment).
   async headers() {
-    if (SITE_LAUNCHED) return [];
+    if (SITE_PUBLIC) return [];
     return [
       {
         source: "/:path*",

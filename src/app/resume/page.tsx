@@ -12,6 +12,7 @@ import { education, experience, identity, site, skills, ui } from "@/content";
 export const metadata: Metadata = {
   title: site.meta.resume.title,
   description: site.meta.resume.description,
+  alternates: { canonical: "/resume" },
 };
 
 function Part({ id, heading, children }: { id: string; heading: string; children: ReactNode }) {
