@@ -614,6 +614,114 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
     });
   }
 
+  // Regression test for the PF-009 CI failure: focus moved (and the test read the position) ~30 ms
+  // into a `?smooth=off` jump, because a `scrollend` from the instant scroll just before it – the
+  // header link scrolled "into view" by the click or the focus – arrived after the jump had begun.
+  // A jump must end only at its target, even when, in the middle of it, a stray `scrollend` comes,
+  // the layout changes (a block inserted above the target: the body's ResizeObserver asks for a
+  // refresh) and refreshes are requested – the spine's own way (held back until it lands) and forced
+  // at once, as one from outside the spine would be (it cancels a browser smooth scroll).
+  for (const [label, path] of [
+    ["Lenis on (desktop) / native (phone)", HIGH],
+    ["?smooth=off", NATIVE],
+  ] as const) {
+    test(`a nav jump lands and only then moves focus, despite a stray scrollend, a layout change and refreshes mid-flight – ${label}`, async ({ page }, info) => {
+      const phone = info.project.name === "phone";
+      await page.goto(path);
+      await waitForSpine(page);
+      type Disruption = "scrollend" | "layout" | "request" | "force";
+      const plan: [string, "click" | "keyboard", Disruption[]][] = [
+        ["contact", "click", ["scrollend", "layout"]],
+        ["about", "keyboard", ["request", "force"]],
+        ["experience", "click", ["scrollend", "layout", "request", "force"]],
+      ];
+      for (const [id, via, disruptions] of plan) {
+        await openMenuIfPhone(page, phone);
+        const link = page.locator("header").getByRole("link", { name: NAV_FOR[id], exact: true });
+        // Armed before the jump: once the jump is in flight and has travelled 150 px, the
+        // disruptions happen at once (inside a scroll event), and focus records where the page was
+        // when it moved. (Scrolls before the jump – the header link scrolled "into view" by the
+        // click or the focus, which is what sent the stray `scrollend` on CI – do not count.)
+        await page.evaluate(
+          ({ sectionId, what }) => {
+            type Mid = { start: number | null; at: number | null; inFlight: boolean; focusY: number | null };
+            const w = window as Window & { __mid?: Mid };
+            const mid: Mid = { start: null, at: null, inFlight: false, focusY: null };
+            w.__mid = mid;
+            const onScroll = () => {
+              if (mid.at !== null || window.__journey!.scroll!().jump === null) return;
+              mid.start ??= window.scrollY;
+              if (Math.abs(window.scrollY - mid.start) < 150) return;
+              window.removeEventListener("scroll", onScroll);
+              mid.at = window.scrollY;
+              mid.inFlight = window.__journey!.scroll!().jump !== null;
+              if (what.includes("scrollend")) window.dispatchEvent(new Event("scrollend"));
+              if (what.includes("layout")) {
+                const block = document.createElement("div");
+                block.setAttribute("data-test-block", "");
+                block.style.height = "320px";
+                document.getElementById("about")!.before(block);
+              }
+              if (what.includes("request")) window.__journey!.refreshScroll!("request");
+              if (what.includes("force")) window.__journey!.refreshScroll!("force");
+            };
+            window.addEventListener("scroll", onScroll, { passive: true });
+            const onFocus = (event: FocusEvent) => {
+              if ((event.target as Element).id !== sectionId) return;
+              window.removeEventListener("focusin", onFocus);
+              mid.focusY = window.scrollY;
+            };
+            window.addEventListener("focusin", onFocus);
+          },
+          { sectionId: id, what: disruptions },
+        );
+        if (via === "keyboard") {
+          await link.focus();
+          await page.keyboard.press("Enter");
+        } else {
+          await link.click();
+        }
+        const index = CHAPTERS.findIndex((c) => c.sectionId === id);
+        await page.waitForFunction((sectionId) => document.activeElement?.id === sectionId, id, { timeout: 20_000 });
+        const settledY = await page.evaluate(() => window.scrollY);
+        await page.waitForTimeout(400);
+        const s = await scroll(page);
+        const mid = await page.evaluate(() => (window as Window & { __mid?: { start: number | null; at: number | null; inFlight: boolean; focusY: number | null } }).__mid!);
+        const landed = await page.evaluate((sectionId) => {
+          const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+          const max = document.documentElement.scrollHeight - window.innerHeight;
+          return {
+            target: Math.min(document.getElementById(sectionId)!.getBoundingClientRect().top + window.scrollY - padding, max),
+            headerBottom: document.querySelector("header")!.getBoundingClientRect().bottom,
+            headingTop: document.getElementById(`${sectionId}-heading`)!.getBoundingClientRect().top,
+            blocks: document.querySelectorAll("[data-test-block]").length,
+          };
+        }, id);
+        console.log(
+          `[jump disrupted] ${info.project.name} ${label} ${via} → #${id} (${disruptions.join(" + ")} at ${mid.at}, from ${mid.start}): ` +
+            `focus at ${mid.focusY}, now ${s.scrollY}, target ${landed.target.toFixed(1)}; ${s.lastJump?.retargets} re-targets, refresh held ${s.lastJump?.refreshDeferred}, ${s.lastJump?.outcome}`,
+        );
+        // The disruptions came while the jump was travelling …
+        expect(mid.at, "the page never travelled 150 px").not.toBeNull();
+        expect(mid.inFlight).toBe(true);
+        // … and it still landed on the chapter's start as the page is laid out now, …
+        expect(s.chapter).toBe(CHAPTERS[index].id);
+        expect(Math.abs(s.scrollY - landed.target)).toBeLessThanOrEqual(1);
+        expect(Math.abs(s.boundaries[index] - landed.target)).toBeLessThanOrEqual(1);
+        expect(landed.headingTop).toBeGreaterThanOrEqual(landed.headerBottom - 1);
+        // … moved focus only once there, and nothing moved the page after that.
+        expect(mid.focusY).not.toBeNull();
+        expect(Math.abs(mid.focusY! - landed.target)).toBeLessThanOrEqual(1);
+        expect(settledY).toBe(s.scrollY);
+        expect(s.lastJump).toMatchObject({ chapter: CHAPTERS[index].id, outcome: "landed", focusedAt: mid.focusY });
+        // A layout change or a forced refresh sent it on at least once; a held-back refresh ran on landing.
+        if (disruptions.includes("layout") || disruptions.includes("force")) expect(s.lastJump!.retargets).toBeGreaterThanOrEqual(1);
+        if (disruptions.includes("request")) expect(s.lastJump!.refreshDeferred).toBe(true);
+        expect(s.jump).toBeNull();
+      }
+    });
+  }
+
   test("under reduced motion (turned on mid-visit) the static tier takes over: no chapter mark, and a jump is instant", async ({ page }, info) => {
     const phone = info.project.name === "phone";
     await page.goto(HIGH);

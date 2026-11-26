@@ -169,9 +169,41 @@ export const NAMED_TARGETS = {
       await page.waitForTimeout(1500);
     },
   },
+  // PF-009: the asset lab (/dev/assets, needs a build with ENABLE_DEV_PAGES=1), desktop only.
+  "assets-high": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "overview" }) },
+  "assets-low": { path: "/dev/assets?tier=low", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "overview" }) },
+  "assets-shader": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "shader" }) },
+  "assets-clip-0": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "overview", clip: 0 }) },
+  "assets-clip-05": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "overview", clip: 0.5 }) },
+  "assets-clip-1": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "overview", clip: 1 }) },
+  "assets-labels": { path: "/dev/assets?tier=high", viewports: [VIEWPORTS[0]], prepare: (page) => assetLab(page, { view: "top" }) },
+  // Load → unload: the readouts with the counters back at their baseline.
+  "assets-unload": {
+    path: "/dev/assets?tier=high",
+    viewports: [VIEWPORTS[0]],
+    prepare: async (page) => {
+      await assetLab(page, { view: "overview" });
+      await page.evaluate(() => window.__assetLab.unload());
+      await page.waitForTimeout(800);
+      await page.locator('[data-readout="renderer"]').evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 520));
+      await page.waitForTimeout(400);
+    },
+  },
   // PF-008: chapter stops are not listed here; any `<chapter>:<start|mid|end>` argument is one
   // (resolveTargets below), optionally limited to one viewport with `@desktop` / `@phone`.
 };
+
+/** The asset lab loaded, framed (`overview` | `shader` | `top`), the clip at `clip`, scrolled to the canvas. */
+async function assetLab(page, { view, clip = 0 }) {
+  await page.waitForFunction(() => window.__assetLab?.snapshot().state === "loaded", null, { timeout: 60_000 });
+  await page.evaluate(({ v, c }) => {
+    window.__assetLab.view(v);
+    window.__assetLab.scrub(c);
+  }, { v: view, c: clip });
+  await page.locator("[data-asset-lab-canvas]").evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 88));
+  // OrbitControls damping and the 4 Hz readouts settle.
+  await page.waitForTimeout(1500);
+}
 
 export const DEFAULT_TARGETS = ["/"];
 

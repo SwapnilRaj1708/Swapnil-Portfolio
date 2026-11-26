@@ -125,3 +125,72 @@ export function changeVisibleWindows(delta: 1 | -1): void {
 export function setPageVisible(visible: boolean): void {
   if (viewStore.getState().pageVisible !== visible) viewStore.setState({ pageVisible: visible });
 }
+
+/**
+ * Asset loading progress (PF-009; PF-012's boot sequence reads it): bytes loaded and expected per
+ * asset and overall, from the bytes actually streamed in (`fetchWithProgress`); the totals are the
+ * manifest's file sizes. An unloaded asset leaves the store, so "overall" always covers the assets
+ * the journey currently wants. Vanilla zustand like the tier store: written as chunks arrive (never
+ * in the frame loop), read with getState() or a selector.
+ */
+export type AssetProgress = {
+  loaded: number;
+  total: number;
+  state: "loading" | "loaded" | "failed";
+};
+
+export type LoadingState = {
+  /** Per asset key (`<chapter>/<slug>`). */
+  assets: Record<string, AssetProgress>;
+  /** Sums over `assets`. */
+  loaded: number;
+  total: number;
+};
+
+export const loadingStore = createStore<LoadingState>()(() => ({ assets: {}, loaded: 0, total: 0 }));
+
+function setAssets(assets: Record<string, AssetProgress>): void {
+  let loaded = 0;
+  let total = 0;
+  for (const key in assets) {
+    loaded += assets[key].loaded;
+    total += assets[key].total;
+  }
+  loadingStore.setState({ assets, loaded, total });
+}
+
+/** An asset starts loading: `total` bytes expected (the manifest's size of the file). */
+export function beginAssetLoad(key: string, total: number): void {
+  setAssets({ ...loadingStore.getState().assets, [key]: { loaded: 0, total, state: "loading" } });
+}
+
+/** `bytes` more have arrived for `key`. */
+export function addAssetBytes(key: string, bytes: number): void {
+  const current = loadingStore.getState().assets[key];
+  if (!current) return;
+  setAssets({ ...loadingStore.getState().assets, [key]: { ...current, loaded: current.loaded + bytes } });
+}
+
+/** The asset is in (or failed). A finished asset's total becomes the bytes that really arrived. */
+export function endAssetLoad(key: string, ok: boolean): void {
+  const current = loadingStore.getState().assets[key];
+  if (!current) return;
+  const done: AssetProgress = ok ? { loaded: current.loaded, total: current.loaded, state: "loaded" } : { ...current, state: "failed" };
+  setAssets({ ...loadingStore.getState().assets, [key]: done });
+}
+
+/** The asset was unloaded (or its load cancelled): it no longer counts. */
+export function forgetAsset(key: string): void {
+  const { [key]: _gone, ...rest } = loadingStore.getState().assets;
+  if (_gone) setAssets(rest);
+}
+
+/** Overall progress 0–1 (1 when nothing is wanted). */
+export function loadingFraction(state: LoadingState = loadingStore.getState()): number {
+  return state.total > 0 ? Math.min(1, state.loaded / state.total) : 1;
+}
+
+/** For unit tests. */
+export function resetLoadingStoreForTests(): void {
+  loadingStore.setState({ assets: {}, loaded: 0, total: 0 }, true);
+}

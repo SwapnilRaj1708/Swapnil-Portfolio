@@ -47,6 +47,45 @@ export const budgets = {
     maxServedBytes: 250 * KB,
   },
 
+  // `npm run asset -- <chapter>/<slug>` (PF-009): the asset pipeline checks every export against
+  // its slug's limits, falling back to the chapter limits (STANDARDS.md §3) for anything a slug does
+  // not set. Over a limit = the pipeline fails with a message and writes nothing. `null` = no limit.
+  //   triangles   drawn: each mesh once, an instanced prop once per INST_ copy (STANDARDS §3 one chapter)
+  //   materials   materials in the export
+  //   images      { count, sides }: at most `count` images; `sides` sorted largest first – the
+  //               largest image's longer side ≤ sides[0], the next ≤ sides[1] … (the last value
+  //               covers the rest)
+  //   objects     nodes in the export (meshes + empties)
+  //   clips       animation clips
+  //   bytes       the asset's files per tier, summed with the chapter's other assets (STANDARDS §3
+  //               "each further chapter's assets")
+  //   maxTextureSide  per tier, after the pipeline (STANDARDS §3 largest texture side)
+  //   lowSimplify false (geometry unchanged in the low variant) or { ratio, error } for meshopt's
+  //               simplifier – a per-asset permission, off unless a slug sets it
+  assets: {
+    chapter: {
+      triangles: 150_000,
+      materials: 8,
+      images: { count: null, sides: [2048] },
+      objects: null,
+      clips: null,
+      bytes: { high: 2_000 * KB, low: 1_000 * KB },
+      maxTextureSide: { high: 2048, low: 1024 },
+      lowSimplify: false,
+    },
+    slugs: {
+      // The contract test piece (PF-009, BLENDER report 2026-11-26): one 1024 bake, one 512 normal map.
+      "shared/pipeline-test": {
+        triangles: 5_000,
+        materials: 4,
+        images: { count: 2, sides: [1024, 512] },
+        objects: 13,
+        clips: 1,
+        lowSimplify: false,
+      },
+    },
+  },
+
   // `npm run lighthouse`: mobile scores (0–100), median of 3 runs, fast-lane pages.
   // With `-- --applied` (real slow 4G and 4× CPU instead of the simulation) LCP is also gated:
   // D-32 – on routes whose LCP is an image, LCP ≤ 2.5 s is checked with applied throttling.

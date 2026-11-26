@@ -4,7 +4,9 @@ import { button, Leva, useControls } from "leva";
 import { Perf } from "r3f-perf";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { assetLoadingTuning, MAX_ASSET_WINDOW } from "@/lib/journey/assets/chapter-plan";
 import { CHAPTERS, MAX_EXTRA_SCROLL } from "@/lib/journey/chapters";
+import { requestAssetPlan } from "../assets/chapter-assets";
 import { requestSpineLayout } from "../scroll/scroll-spine";
 import { scrollTuning } from "../scroll/scroll.tuning";
 import { testObjectTuning as tuning } from "./test-object.tuning";
@@ -34,6 +36,9 @@ function currentValues() {
       // src/components/journey/scroll/scroll.tuning.ts
       ...scrollTuning,
     },
+    // PF-009: chapters ahead that preload, chapters around the current one that stay loaded
+    // (src/lib/journey/assets/chapter-plan.ts).
+    assets: { ...assetLoadingTuning },
   };
 }
 
@@ -123,6 +128,34 @@ export function DevTools() {
       step: 0.5,
       onChange: (v: number) => {
         scrollTuning.cameraDamping = v;
+      },
+    },
+    "Export values": button(() => {
+      void exportValues();
+    }),
+  });
+  // PF-009: the per-chapter asset window.
+  useControls("Assets (PF-009)", {
+    preloadAhead: {
+      value: assetLoadingTuning.ahead,
+      min: 0,
+      max: MAX_ASSET_WINDOW,
+      step: 1,
+      onChange: (v: number) => {
+        if (assetLoadingTuning.ahead === v) return;
+        assetLoadingTuning.ahead = v;
+        requestAssetPlan();
+      },
+    },
+    keepLoaded: {
+      value: assetLoadingTuning.keep,
+      min: 0,
+      max: MAX_ASSET_WINDOW,
+      step: 1,
+      onChange: (v: number) => {
+        if (assetLoadingTuning.keep === v) return;
+        assetLoadingTuning.keep = v;
+        requestAssetPlan();
       },
     },
     "Export values": button(() => {

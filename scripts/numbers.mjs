@@ -198,7 +198,7 @@ function toMarkdown(report) {
       `| ${r.stop} | ${r.chapter ?? "–"} (${typeof r.progress === "number" ? r.progress.toFixed(3) : "–"}) | ${r.run} | ${r.powerPreference ?? "?"} / ${r.renderer ?? "?"} | ${r.tierActive} | ${r.pixelRatio} | ${r.drawCalls} | ${r.triangles} | ${r.geometries} | ${r.textures} | ${mb(r.textureBytes)} | ${ms(r.frameTimeMs.p50)} / ${ms(r.frameTimeMs.p95)} / ${ms(r.frameTimeMs.p99)} | ${ms(r.cpuTimeMs.p50)} / ${ms(r.cpuTimeMs.p95)} / ${ms(r.cpuTimeMs.p99)} | ≤ ${limitsFor(r.run).p95} (${limitsFor(r.run).device}) | ${ok} |`,
     );
   }
-  lines.push("", "Texture memory: textures the scene's materials use (width × height × 4 bytes, + ⅓ for mipmaps). `Textures` is three.js's count, which also includes the renderer's own internal ones.", "");
+  lines.push("", "Texture memory: textures the scene's materials use (uncompressed: width × height × 4 bytes, + ⅓ for mipmaps; compressed KTX2, since PF-009: the transcoded mip levels as uploaded). `Textures` is three.js's count, which also includes the renderer's own internal ones.", "");
   return lines.join("\n");
 }
 

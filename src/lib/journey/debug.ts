@@ -1,4 +1,4 @@
-import type { JourneyState } from "./store";
+import type { JourneyState, LoadingState } from "./store";
 
 /**
  * `window.__journey`: hooks for the browser tests, the review captures and the numbers script.
@@ -59,6 +59,27 @@ export type ScrollDebug = {
   /** Section tops (document px) and the scroll padding the boundaries were measured with. */
   sectionTops: number[];
   scrollPadding: number;
+  /** The nav jump in flight (PF-009 follow-up 1), or null. */
+  jump: JumpDebug | null;
+  /** The last nav jump that ended, or null. */
+  lastJump: JumpDebug | null;
+};
+
+/** A nav jump: where it goes and what happened on the way. */
+export type JumpDebug = {
+  chapter: string;
+  /** The chapter start it is (or was last) heading for (scroll px). */
+  target: number;
+  /** Times it was sent on again: a layout change, a refresh, a stalled smooth scroll. */
+  retargets: number;
+  /** A refresh was requested while it ran and held back until it landed. */
+  refreshDeferred: boolean;
+  /** How it ended: at the target ("landed", focus moved), instantly after too many re-targets or
+   *  the time limit ("forced", focus moved), or taken over by the visitor's own scrolling
+   *  ("abandoned", focus not moved). Null while in flight. */
+  outcome: "landed" | "forced" | "abandoned" | null;
+  /** scrollY when focus moved to the section (null if it did not). */
+  focusedAt: number | null;
 };
 
 /** The camera rig (PF-008): the path it plays and where the camera is. */
@@ -107,9 +128,17 @@ export type JourneyDebug = {
   scroll: (() => ScrollDebug) | null;
   /** Sets a chapter's extra scroll length (viewport heights) as the dev panel does (tests). */
   setExtraScroll: ((chapter: string, viewportHeights: number) => void) | null;
+  /** Asks the spine for a refresh (tests, PF-009 follow-up 1): "request" goes the spine's own way
+   *  (held back while a nav jump runs), "force" runs `ScrollTrigger.refresh()` at once, as a refresh
+   *  from outside the spine would. */
+  refreshScroll: ((how: "request" | "force") => void) | null;
   /** The camera rig (null until the canvas has mounted it). */
   rig: (() => RigDebug) | null;
+  /** Per-chapter assets (PF-009): what is loaded, what the chapter rules want, the loading progress. */
+  assets: (() => AssetsDebug) | null;
 };
+
+export type AssetsDebug = { loaded: string[]; wanted: string[]; loading: LoadingState };
 
 declare global {
   interface Window {
@@ -139,7 +168,9 @@ export function installJourneyDebug(state: () => JourneyState): JourneyDebug | n
     renders: {},
     scroll: null,
     setExtraScroll: null,
+    refreshScroll: null,
     rig: null,
+    assets: null,
   };
   return window.__journey;
 }

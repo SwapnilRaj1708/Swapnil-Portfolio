@@ -8,6 +8,7 @@ import { addContextLoss, CONTEXT_LOSSES_BEFORE_STATIC } from "@/lib/journey/sess
 import { canvasSeen, failAtLow, goStatic, journeyStore, lowerTier, viewStore } from "@/lib/journey/store";
 import { TIER_LIMITS, type GpuPreference, type RenderTier } from "@/lib/journey/tiers";
 import { PALETTE } from "@/styles/palette";
+import { ChapterAssets } from "../assets/chapter-assets";
 import { ScrollSpine } from "../scroll/scroll-spine";
 import { CameraRig } from "./camera-rig";
 import { FrameEvent, FrameLoop } from "./frame-loop";
@@ -123,6 +124,7 @@ export function JourneyCanvas({ tier, powerPreference, onFirstFrame, onRelease }
         <CameraRig onSettled={onPathSettled} />
         <TestObject tier={tier} />
         {path.path ? <StandinMarkers path={path.path} /> : null}
+        <ChapterAssets />
         {path.settled ? <FrameDriver tier={tier} onFirstFrame={onFirstFrame} /> : null}
         <ContextLossWatch />
         {DevTools && devTools ? (
