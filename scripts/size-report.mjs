@@ -11,12 +11,14 @@
 // transfers in Chromium (desktop and phone viewports), lazy images included.
 // Then the stage 1 stills (budgets.stills, PF-028): each master in public/media/stills/ as
 // next/image serves it at the largest size the layout uses, in AVIF and in WebP.
-// Then the 3D layer (PF-007, budgets.threeDChunk):
-//   - no route's first-load JS contains three.js or React Three Fiber;
-//   - where the build has the 3D layer (not the production deployment, D-39): the lazy 3D chunk –
-//     the JS files `/` loads in Chromium with `?tier=high` beyond those it loads with
-//     `?tier=static` – summed and gated at ≤ 400 KB gzip;
-//   - where it does not: no file in .next/static contains three.js, React Three Fiber or the loader;
+// Then the 3D layer (PF-007, PF-008, budgets.threeDChunk):
+//   - no route's first-load JS contains three.js, React Three Fiber, gsap / ScrollTrigger, Lenis or
+//     the camera rig;
+//   - where the build has the 3D layer (not the production deployment, D-39): the lazy journey
+//     chunks – the JS files `/` loads in Chromium with `?tier=high` beyond those it loads with
+//     `?tier=static` (three, R3F, the scene, the scroll spine's gsap + ScrollTrigger + Lenis, the
+//     rig) – summed and gated at ≤ 400 KB gzip;
+//   - where it does not: no file in .next/static contains any of those or the loader;
 //   - the dev tools (leva, r3f-perf) are in no file of the build unless it was made with
 //     ENABLE_DEV_PAGES=1 (then they are reported, not gated).
 // Exit code 1 if anything is over its limit.
@@ -95,10 +97,16 @@ const SIGNATURES = {
   three: "__THREE__",
   "react-three-fiber": "R3F: Hooks can only be used",
   "journey loader": "journey-tier-floor",
+  // PF-008: the scroll spine's libraries and the camera rig.
+  gsap: "GSAP target",
+  scrolltrigger: '"ScrollTrigger"',
+  lenis: "lenis-smooth",
+  "camera rig": "world-path.json",
   leva: "leva__root",
   "r3f-perf": "muiPerf",
 };
-const THREE_D = ["three", "react-three-fiber"];
+/** May only ever load lazily, with the 3D layer: never in a route's first-load JS. */
+const THREE_D = ["three", "react-three-fiber", "gsap", "scrolltrigger", "lenis", "camera rig"];
 const DEV_TOOLS = ["leva", "r3f-perf"];
 
 /** Which signatures a file contains. */
@@ -239,7 +247,7 @@ async function main() {
     console.error(`OVER BUDGET: ${s.file} served as ${s.problem ?? `AVIF ${fmt(s.avif)} / WebP ${fmt(s.webp)}`}, limit ${fmt(budgets.stills.maxServedBytes)}`);
   }
   const heavyChunk = !!chunk && chunk.gzip > budgets.threeDChunk.gzipBytes;
-  if (heavyChunk) console.error(`OVER BUDGET: the lazy 3D chunk is ${fmt(chunk.gzip)} gzip, limit ${fmt(budgets.threeDChunk.gzipBytes)}`);
+  if (heavyChunk) console.error(`OVER BUDGET: the lazy journey chunks sum to ${fmt(chunk.gzip)} gzip, limit ${fmt(budgets.threeDChunk.gzipBytes)}`);
   if (over.length || problems.length || heavy.length || heavyStills.length || heavyChunk) process.exit(1);
   console.log("All routes within budget.");
 }
@@ -281,24 +289,31 @@ async function measureThreeDChunk(origin, measure) {
     const rows = [];
     for (const url of files) rows.push({ url, ...(await measure(url)) });
     const sum = (k) => rows.reduce((t, r) => t + r[k], 0);
-    const hasThree = rows.some((r) => r.hits.includes("three"));
-    return { files: rows, gzip: sum("gzip"), brotli: sum("brotli"), raw: sum("raw"), error: hasThree ? null : "no lazily loaded file contains three.js" };
+    // PF-008: the scroll spine (gsap, ScrollTrigger, Lenis) and the camera rig load with the scene.
+    const missing = ["three", "gsap", "scrolltrigger", "lenis", "camera rig"].filter((name) => !rows.some((r) => r.hits.includes(name)));
+    return {
+      files: rows,
+      gzip: sum("gzip"),
+      brotli: sum("brotli"),
+      raw: sum("raw"),
+      error: missing.length ? `no lazily loaded file contains ${missing.join(", ")}` : null,
+    };
   } finally {
     await browser.close();
   }
 }
 
 function printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems }) {
-  console.log("3D layer (PF-007, STANDARDS.md §3: lazy 3D chunk ≤ 400 KB gzip; never in first-load JS)\n");
+  console.log("3D layer (PF-007, PF-008; STANDARDS.md §3: the lazy journey chunks ≤ 400 KB gzip together; never in first-load JS)\n");
   const where = (name) => (scan.found[name].length ? scan.found[name].join(", ") : "–");
   if (journeyBuilt) {
     if (!chunk || chunk.error) {
       problems.push(`3D chunk: ${chunk?.error ?? "not measured"}`);
     } else {
-      console.log(`Lazy 3D chunk (loaded by / after the page is interactive), ${chunk.files.length} file(s):`);
+      console.log(`Lazy journey chunks (loaded by / after the page is interactive: three, R3F, the scene, gsap + ScrollTrigger, Lenis, the rig), ${chunk.files.length} file(s):`);
       for (const f of chunk.files) console.log(`  ${f.url}  ${fmt(f.gzip)} gzip, ${fmt(f.brotli)} Brotli, ${fmt(f.raw)} raw  [${f.hits.join(", ") || "scene code"}]`);
       const limit = budgets.threeDChunk.gzipBytes;
-      console.log(`  Total: ${fmt(chunk.gzip)} gzip (gated, ≤ ${fmt(limit)}: ${chunk.gzip <= limit ? "ok" : "OVER"}), ${fmt(chunk.brotli)} Brotli, ${fmt(chunk.raw)} raw`);
+      console.log(`  Sum: ${fmt(chunk.gzip)} gzip (gated, ≤ ${fmt(limit)}: ${chunk.gzip <= limit ? "ok" : "OVER"}), ${fmt(chunk.brotli)} Brotli, ${fmt(chunk.raw)} raw`);
     }
   } else {
     console.log("This build has no 3D layer (the production deployment before PF-026, D-39).");
@@ -308,7 +323,7 @@ function printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems }) {
     }
     console.log(`  In .next/static (${scan.count} JS files): ${names.map((n) => `${n} ${scan.found[n].length ? "FOUND" : "absent"}`).join(", ")}`);
   }
-  console.log("  three.js / React Three Fiber in any route's first-load JS: none (an ERROR line lists any found)");
+  console.log(`  ${THREE_D.join(" / ")} in any route's first-load JS: none (an ERROR line lists any found)`);
   const devFound = DEV_TOOLS.filter((n) => scan.found[n].length);
   if (devPagesBuild) {
     console.log(`  Dev tools (leva, r3f-perf): ENABLE_DEV_PAGES=1 build, present by design: ${devFound.map((n) => `${n} in ${where(n)}`).join("; ") || "none found"} (not gated)`);

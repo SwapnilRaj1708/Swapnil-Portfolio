@@ -1,16 +1,26 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NeutralToneMapping, type WebGLRenderer } from "three";
-import { journeyDebug } from "@/lib/journey/debug";
+import { countRender, journeyDebug } from "@/lib/journey/debug";
 import { addContextLoss, CONTEXT_LOSSES_BEFORE_STATIC } from "@/lib/journey/session";
 import { canvasSeen, failAtLow, goStatic, journeyStore, lowerTier, viewStore } from "@/lib/journey/store";
 import { TIER_LIMITS, type GpuPreference, type RenderTier } from "@/lib/journey/tiers";
 import { PALETTE } from "@/styles/palette";
+import { ScrollSpine } from "../scroll/scroll-spine";
+import { CameraRig } from "./camera-rig";
 import { FrameEvent, FrameLoop } from "./frame-loop";
+import type { JourneyPath } from "./path-asset";
+import { StandinMarkers } from "./standin-markers";
 import { readSceneStats } from "./stats";
 import { TestObject } from "./test-object";
+
+/**
+ * Set on <html> while the canvas is mounted: home sections put their text on the canvas scrim
+ * (`canvas:` variant in globals.css) only then. The static tier never has it.
+ */
+const CANVAS_ATTRIBUTE = "data-journey-canvas";
 
 /**
  * The lazy 3D chunk's entry (three + React Three Fiber + the scene). Imported only by the loader
@@ -58,11 +68,22 @@ function wantsDevTools(): boolean {
 const RESTORE_TIMEOUT_MS = 5000;
 
 export function JourneyCanvas({ tier, powerPreference, onFirstFrame, onRelease }: JourneyCanvasProps) {
+  countRender("JourneyCanvas");
   // Antialiasing is fixed when the context is created: decided by the tier the canvas starts on.
   const [startTier] = useState(tier);
   const [gpu] = useState(powerPreference);
   const [devTools] = useState(wantsDevTools);
   const glRef = useRef<WebGLRenderer | null>(null);
+  // The camera path: frames are drawn (and the canvas fades in) only once it is settled, so the
+  // first frame already shows the pose for the scroll position – no jump from the port's.
+  const [path, setPath] = useState<{ settled: boolean; path: JourneyPath | null }>({ settled: false, path: null });
+  const onPathSettled = useCallback((loaded: JourneyPath | null) => setPath({ settled: true, path: loaded }), []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute(CANVAS_ATTRIBUTE, "");
+    return () => root.removeAttribute(CANVAS_ATTRIBUTE);
+  }, []);
 
   useEffect(
     () => () => {
@@ -99,8 +120,10 @@ export function JourneyCanvas({ tier, powerPreference, onFirstFrame, onRelease }
         }}
       >
         <color attach="background" args={[PALETTE.background]} />
+        <CameraRig onSettled={onPathSettled} />
         <TestObject tier={tier} />
-        <FrameDriver tier={tier} onFirstFrame={onFirstFrame} />
+        {path.path ? <StandinMarkers path={path.path} /> : null}
+        {path.settled ? <FrameDriver tier={tier} onFirstFrame={onFirstFrame} /> : null}
         <ContextLossWatch />
         {DevTools && devTools ? (
           <Suspense fallback={null}>
@@ -108,6 +131,7 @@ export function JourneyCanvas({ tier, powerPreference, onFirstFrame, onRelease }
           </Suspense>
         ) : null}
       </Canvas>
+      <ScrollSpine />
       {DevPanel && devTools ? (
         <Suspense fallback={null}>
           <DevPanel />
@@ -124,6 +148,7 @@ export function JourneyCanvas({ tier, powerPreference, onFirstFrame, onRelease }
  * rare events (first frame, a downgrade, a finished sample) leave the loop through a timer.
  */
 function FrameDriver({ tier, onFirstFrame }: { tier: RenderTier; onFirstFrame: () => void }) {
+  countRender("FrameDriver");
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const setFrameloop = useThree((s) => s.setFrameloop);

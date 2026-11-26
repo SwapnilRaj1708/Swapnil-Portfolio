@@ -6,7 +6,12 @@
 // each forced tier (`?tier=high|medium|low`, allowed off the production deployment) and records:
 //   draw calls, triangles, geometries, textures, estimated texture memory on the GPU,
 //   frame time p50 / p95 / p99 over a fixed window after a warm-up, the CPU time of each frame,
-//   the tier actually active and the pixel ratio used.
+//   the tier actually active and the pixel ratio used, and (PF-008) the chapter and progress the
+//   stop landed on.
+// Stops (scripts/review/targets.mjs): `/` (the top of the home page) and every chapter stop
+// `<chapter>:<start|mid|end>` – the home page scrolled to a chapter's start, middle or end,
+// resolved from the live registry at measuring time. Default: port:start, every chapter's mid,
+// uplink:end.
 // Plus "medium (throttled)": the high tier with CDP CPU throttling 4× (STANDARDS §3: medium's
 // frame-time budget is measured on the reference laptop, throttled).
 //
@@ -124,6 +129,7 @@ async function measure(browser, origin, stop, run) {
   const result = await page.evaluate(() => ({
     stats: window.__journey.stats(),
     state: window.__journey.state(),
+    scroll: window.__journey.scroll?.() ?? null,
     devTools: !!document.querySelector("[data-dev-panel], #leva__root"),
   }));
   if (run.cpuThrottle > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -137,6 +143,10 @@ async function measure(browser, origin, stop, run) {
     informational: !!run.informational,
     powerPreference: result.stats.powerPreference,
     renderer: result.stats.renderer,
+    chapter: result.scroll?.chapter ?? null,
+    progress: result.scroll?.progress ?? null,
+    chapterProgress: result.scroll?.chapterProgress ?? null,
+    scrollY: result.scroll?.scrollY ?? null,
     tierActive: result.state.tier,
     tierReason: result.state.reason,
     pixelRatio: result.stats.pixelRatio,
@@ -177,15 +187,15 @@ function toMarkdown(report) {
     `- Browser: ${report.browser}; frames ${report.framePacing}`,
     `- Viewport: ${report.viewport.width}×${report.viewport.height} @${report.viewport.deviceScaleFactor}x; warm-up ${report.warmupMs} ms, sample ${report.sampleMs} ms`,
     "",
-    "| Stop | Run | GPU asked / canvas renderer | Tier active | Pixel ratio | Draw calls | Triangles | Geometries | Textures | Texture memory | Frame p50 / p95 / p99 (ms) | CPU p50 / p95 / p99 (ms) | p95 limit | Within budget |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| Stop | Chapter (progress) | Run | GPU asked / canvas renderer | Tier active | Pixel ratio | Draw calls | Triangles | Geometries | Textures | Texture memory | Frame p50 / p95 / p99 (ms) | CPU p50 / p95 / p99 (ms) | p95 limit | Within budget |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   ];
   for (const r of report.results) {
     const j = judge(r);
     const verdict = Object.values(j).every(Boolean) ? "yes" : `no (${Object.entries(j).filter(([, v]) => !v).map(([k]) => k).join(", ")})`;
     const ok = r.informational ? `information only (${verdict} against high)` : verdict;
     lines.push(
-      `| ${r.stop} | ${r.run} | ${r.powerPreference ?? "?"} / ${r.renderer ?? "?"} | ${r.tierActive} | ${r.pixelRatio} | ${r.drawCalls} | ${r.triangles} | ${r.geometries} | ${r.textures} | ${mb(r.textureBytes)} | ${ms(r.frameTimeMs.p50)} / ${ms(r.frameTimeMs.p95)} / ${ms(r.frameTimeMs.p99)} | ${ms(r.cpuTimeMs.p50)} / ${ms(r.cpuTimeMs.p95)} / ${ms(r.cpuTimeMs.p99)} | ≤ ${limitsFor(r.run).p95} (${limitsFor(r.run).device}) | ${ok} |`,
+      `| ${r.stop} | ${r.chapter ?? "–"} (${typeof r.progress === "number" ? r.progress.toFixed(3) : "–"}) | ${r.run} | ${r.powerPreference ?? "?"} / ${r.renderer ?? "?"} | ${r.tierActive} | ${r.pixelRatio} | ${r.drawCalls} | ${r.triangles} | ${r.geometries} | ${r.textures} | ${mb(r.textureBytes)} | ${ms(r.frameTimeMs.p50)} / ${ms(r.frameTimeMs.p95)} / ${ms(r.frameTimeMs.p99)} | ${ms(r.cpuTimeMs.p50)} / ${ms(r.cpuTimeMs.p95)} / ${ms(r.cpuTimeMs.p99)} | ≤ ${limitsFor(r.run).p95} (${limitsFor(r.run).device}) | ${ok} |`,
     );
   }
   lines.push("", "Texture memory: textures the scene's materials use (width × height × 4 bytes, + ⅓ for mipmaps). `Textures` is three.js's count, which also includes the renderer's own internal ones.", "");
@@ -210,7 +220,7 @@ async function main() {
         if (!run.informational) webgl ??= r.webgl;
         results.push(r);
         console.log(
-          `${stop.name} ${run.label}: ${r.powerPreference} → ${r.renderer}; tier ${r.tierActive}, dpr ${r.pixelRatio}, ${r.drawCalls} draw calls, ${r.triangles} triangles, ` +
+          `${stop.name} [${r.chapter ?? "–"} ${typeof r.progress === "number" ? r.progress.toFixed(3) : ""}] ${run.label}: ${r.powerPreference} → ${r.renderer}; tier ${r.tierActive}, dpr ${r.pixelRatio}, ${r.drawCalls} draw calls, ${r.triangles} triangles, ` +
             `frame p50/p95/p99 ${ms(r.frameTimeMs.p50)}/${ms(r.frameTimeMs.p95)}/${ms(r.frameTimeMs.p99)} ms, CPU p95 ${ms(r.cpuTimeMs.p95)} ms`,
         );
         if (r.devToolsShown) console.warn("WARNING: the dev tools are shown on this page – their cost is in these numbers.");

@@ -1,0 +1,13 @@
+{
+  "fps": 30,
+  "firstFrame": 1,
+  "lastFrame": 361,
+  "markers": {
+    "CH_port": 1,
+    "CH_bus": 55,
+    "CH_memory": 115,
+    "CH_array": 175,
+    "CH_core": 245,
+    "CH_uplink": 305
+  }
+}

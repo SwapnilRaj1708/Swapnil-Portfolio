@@ -16,8 +16,11 @@ import { expectNoAxeViolations } from "./axe";
 // trigger, the low-tier failure and the downgrade) or pretends a hardware GPU (`pretendHardwareGpu`)
 // to test the automatic rules. Nothing here depends on rendered pixels.
 
-/** Strings only the 3D chunk contains (three.js core, React Three Fiber). */
-const SIGNATURES = ["__THREE__", "R3F: Hooks can only be used"];
+/**
+ * Strings only the lazy journey chunks contain: three.js core, React Three Fiber, and (PF-008) gsap
+ * and Lenis, which load with them.
+ */
+const SIGNATURES = ["__THREE__", "R3F: Hooks can only be used", "GSAP target", "lenis-smooth"];
 
 type ChunkWatch = { seen: string[]; release: () => void };
 
@@ -183,9 +186,13 @@ test.describe("3D layer (previews, local builds)", () => {
         canvases: 1,
         painted: true,
       });
-      // The Port still: not in the DOM, not requested (the canvas stands in for it).
+      // The Port still: not in the DOM, not requested (the canvas stands in for it). Since PF-008 the
+      // same holds for every banner still: the canvas shows through every home section.
       await expect(page.locator("section#top picture img")).toHaveCount(0);
-      expect(images.filter((u) => u.includes("still-s1-port"))).toEqual([]);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator("main picture img")).toHaveCount(0);
+      expect(images.filter((u) => u.includes("/media/stills/"))).toEqual([]);
       expect(errors).toEqual([]);
     });
 
@@ -268,21 +275,19 @@ test.describe("3D layer (previews, local builds)", () => {
       await expect.poll(d.frames, { timeout: 15_000 }).toBeGreaterThan(hiddenAt + 5);
     });
 
-    test("no frames while the canvas is covered: below the hero, and on pages without a see-through section", async ({ page }) => {
+    test("the canvas renders behind every home section, and pauses on pages without a see-through section", async ({ page }) => {
       await page.goto("/?tier=low");
       await waitForCanvas(page);
       const d = debug(page);
       const host = page.locator("[data-journey-host]");
-      // Scrolled past the hero: every other section is opaque.
+      // PF-008: every home section is a window onto the canvas – scrolled down, it keeps rendering.
       await page.locator("#experience").evaluate((el) => el.scrollIntoView());
-      await expect(host).not.toHaveAttribute("data-shown");
-      await page.waitForTimeout(200);
-      const covered = await d.frames();
-      await page.waitForTimeout(1500);
-      expect(await d.frames()).toBe(covered);
+      await page.waitForTimeout(300);
+      await expect(host).toHaveAttribute("data-shown", "");
+      const below = await d.frames();
+      await expect.poll(d.frames, { timeout: 15_000 }).toBeGreaterThan(below + 5);
       await page.evaluate(() => window.scrollTo(0, 0));
       await expect(host).toHaveAttribute("data-shown", "");
-      await expect.poll(d.frames, { timeout: 15_000 }).toBeGreaterThan(covered + 5);
 
       // A client navigation to /work: the canvas stays mounted (persistent) but hidden and paused.
       await page.locator('header a[href="/work"]:visible').first().click();
@@ -661,8 +666,8 @@ test.describe("3D layer (previews, local builds)", () => {
 test.describe("production deployment (D-39): the stage 1 home, no 3D layer", () => {
   test.skip(JOURNEY_ENABLED, "this build has the 3D layer (not built as the production deployment)");
 
-  for (const path of ["/", "/?tier=high"]) {
-    test(`${path} loads no 3D chunk, renders no canvas and keeps the stage 1 hero`, async ({ page, request }) => {
+  for (const path of ["/", "/?tier=high", "/?tier=high&smooth=off"]) {
+    test(`${path} loads no 3D chunk (no three.js, gsap or Lenis), renders no canvas and keeps the stage 1 home`, async ({ page, request }) => {
       const errors = collectErrors(page);
       const chunks = await watchChunks(page);
       const scripts: string[] = [];
@@ -681,6 +686,18 @@ test.describe("production deployment (D-39): the stage 1 home, no 3D layer", () 
       const html = await (await request.get("/")).text();
       expect(html).toMatch(/<section[^>]*id="top"[^>]*class="[^"]*bg-background/);
       expect(html).not.toContain("<noscript><div aria-hidden");
+      // PF-008 is absent too: no canvas scrim classes, no chapter mark, native scrolling, plain anchors.
+      expect(html).not.toContain("canvas:");
+      expect(html).not.toContain("current=location");
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2));
+      await page.waitForTimeout(300);
+      expect(
+        await page.evaluate(() => ({
+          lenis: document.documentElement.classList.contains("lenis"),
+          section: document.documentElement.getAttribute("data-journey-section"),
+          marked: document.querySelectorAll('[aria-current="location"]').length,
+        })),
+      ).toEqual({ lenis: false, section: null, marked: 0 });
       expect(errors).toEqual([]);
     });
   }

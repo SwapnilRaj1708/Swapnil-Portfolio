@@ -14,10 +14,10 @@ import {
   type HemisphereLight,
   type Mesh,
 } from "three";
-import { journeyDebug } from "@/lib/journey/debug";
+import { countRender, journeyDebug } from "@/lib/journey/debug";
 import type { RenderTier } from "@/lib/journey/tiers";
 import { PALETTE } from "@/styles/palette";
-import { placeTestObject } from "./layout";
+import { placeTestObject, portViewport } from "./layout";
 import { testObjectTuning as tuning } from "./test-object.tuning";
 
 /**
@@ -61,9 +61,12 @@ export function TestObject({ tier }: { tier: RenderTier }) {
   const trace = useRef<Mesh<BoxGeometry, MeshStandardMaterial>>(null);
   const key = useRef<DirectionalLight>(null);
   const fill = useRef<HemisphereLight>(null);
-  const viewport = useThree((s) => s.viewport);
+  countRender("TestObject");
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
+  // Placed for the port's camera pose (PF-008: the camera now travels; the object stays where the
+  // port stop frames it, whatever pose the page was loaded at).
+  const viewport = portViewport(size);
 
   // Fewer curve segments on the low tier. Disposed when replaced or unmounted.
   const geometry = useMemo(() => {
@@ -128,6 +131,12 @@ export function TestObject({ tier }: { tier: RenderTier }) {
       const g = group.current;
       if (!g) return null;
       const r = place.radius;
+      // The camera travels (PF-008): a sphere wholly behind the near plane is out of sight (null);
+      // one that crosses it projects to nothing meaningful, so it counts as the whole canvas.
+      const depth = corner.set(place.x, place.y, 0).applyMatrix4(camera.matrixWorldInverse).z;
+      const near = (camera as { near?: number }).near ?? 0.1;
+      if (depth - r > -near) return null;
+      if (depth + r > -near) return { left: 0, top: 0, right: size.width, bottom: size.height };
       let left = Infinity;
       let right = -Infinity;
       let top = Infinity;

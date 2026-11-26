@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useJourneyChapter } from "@/components/journey/gate";
 import { Link } from "@/components/ui/link";
 import type { NavItem } from "@/content/schema";
 import { SimpleViewSwitch } from "./simple-view-switch";
@@ -12,12 +13,34 @@ import { SimpleViewSwitch } from "./simple-view-switch";
  * From `lg` up it is an inline row. Below `lg` it collapses behind a disclosure button:
  * aria-expanded/aria-controls, Escape closes and returns focus to the button, choosing a link
  * closes it. Without JavaScript (`noscript:`) the list is simply shown.
+ *
+ * The link of the page being shown is `aria-current="page"`. On the home page in the non-static
+ * tiers (PF-008) the link of the section the visitor is in is `aria-current="location"`, from the
+ * scroll spine's current chapter (`useJourneyChapter`: re-renders on a chapter change only). The
+ * links stay real anchors (`/#about` …): without JavaScript, in the static tier and on the
+ * production deployment they are plain anchor links; with the spine running a click scrolls there
+ * smoothly (src/components/journey/scroll/scroll-spine.tsx).
+ *
+ * A section's link is its anchor (`/#about`) or, where the section has a page of its own with the
+ * same name, that page: during the projects chapter (section `work`) "Work" is marked, and its
+ * href stays `/work`. The hero (`top`) has no link and marks nothing. Only the chapter registry's
+ * section ids are ever published (src/lib/journey/chapters.ts), so `/resume` is never a location.
  */
+function sectionHrefs(sectionId: string): readonly string[] {
+  return [`/#${sectionId}`, `/${sectionId}`];
+}
+
 export function SiteNav({ items }: { items: readonly NavItem[] }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const pathname = usePathname();
+  const chapterSection = useJourneyChapter();
+  const currentOf = (href: string): "page" | "location" | undefined => {
+    if (pathname === href) return "page";
+    if (chapterSection !== null && pathname === "/" && sectionHrefs(chapterSection).includes(href)) return "location";
+    return undefined;
+  };
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
@@ -51,7 +74,7 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
       <ul data-quick-links className="flex items-center gap-3 sm:gap-5 lg:hidden noscript:hidden">
         {quickItems.map((item) => (
           <li key={item.href}>
-            <Link href={item.href} variant="nav" current={pathname === item.href}>
+            <Link href={item.href} variant="nav" current={currentOf(item.href)}>
               {item.label}
             </Link>
           </li>
@@ -103,7 +126,7 @@ export function SiteNav({ items }: { items: readonly NavItem[] }) {
               <Link
                 href={item.href}
                 variant="nav"
-                current={pathname === item.href}
+                current={currentOf(item.href)}
                 onClick={() => close(false)}
                 className="w-full lg:w-auto"
               >

@@ -38,6 +38,47 @@ export type FrameSample = {
 
 export type ScreenRect = { left: number; top: number; right: number; bottom: number };
 
+/** The scroll spine's state (PF-008): store values plus what they were computed from. */
+export type ScrollDebug = {
+  /** The registry's chapter ids, in order (the boundaries follow it). */
+  chapters: string[];
+  active: boolean;
+  mode: string | null;
+  /** The camera eases toward the scroll position (no Lenis). */
+  damped: boolean;
+  progress: number;
+  chapter: string | null;
+  chapterIndex: number;
+  chapterProgress: number;
+  epoch: number;
+  /** Each chapter's start (scroll px), from the measured sections. */
+  boundaries: number[];
+  /** The largest scroll position (px). */
+  max: number;
+  scrollY: number;
+  /** Section tops (document px) and the scroll padding the boundaries were measured with. */
+  sectionTops: number[];
+  scrollPadding: number;
+};
+
+/** The camera rig (PF-008): the path it plays and where the camera is. */
+export type RigDebug = {
+  ready: boolean;
+  fps: number;
+  firstFrame: number;
+  lastFrame: number;
+  /** Start frame of each chapter (from the markers, or even spacing). */
+  starts: number[];
+  problem: string | null;
+  clipStart: number;
+  /** The frame the camera shows now, and the one it heads for (equal unless easing). */
+  frame: number;
+  targetFrame: number;
+  position: [number, number, number];
+  quaternion: [number, number, number, number];
+  fov: number;
+};
+
 export type JourneyDebug = {
   /** Frames rendered since the canvas was created (written in the frame loop). */
   frames: number;
@@ -60,6 +101,14 @@ export type JourneyDebug = {
   lastRelease: { geometries: number; textures: number; programs: number; programNames: string[]; contextLost: boolean } | null;
   /** The last p95 frame interval the downgrade monitor computed (ms), -1 before the first. */
   monitorP95: number;
+  /** React renders per journey component (PF-008: unchanged while the page scrolls). */
+  renders: Record<string, number>;
+  /** The scroll spine (null while it is not running). */
+  scroll: (() => ScrollDebug) | null;
+  /** Sets a chapter's extra scroll length (viewport heights) as the dev panel does (tests). */
+  setExtraScroll: ((chapter: string, viewportHeights: number) => void) | null;
+  /** The camera rig (null until the canvas has mounted it). */
+  rig: (() => RigDebug) | null;
 };
 
 declare global {
@@ -87,6 +136,19 @@ export function installJourneyDebug(state: () => JourneyState): JourneyDebug | n
     objectRect: null,
     lastRelease: null,
     monitorP95: -1,
+    renders: {},
+    scroll: null,
+    setExtraScroll: null,
+    rig: null,
   };
   return window.__journey;
+}
+
+/**
+ * Counts a React render of a journey component (tests: the scene must not re-render through React
+ * while the page scrolls). Called in render; a no-op where the hooks are not built in.
+ */
+export function countRender(name: string): void {
+  const debug = journeyDebug();
+  if (debug) debug.renders[name] = (debug.renders[name] ?? 0) + 1;
 }
