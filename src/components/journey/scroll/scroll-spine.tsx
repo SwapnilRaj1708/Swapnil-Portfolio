@@ -7,7 +7,8 @@ import Lenis from "lenis";
 import { usePathname } from "next/navigation";
 import { publishChapterSection } from "@/lib/journey/chapter-bridge";
 import { CHAPTERS, chapterIndexOfSection } from "@/lib/journey/chapters";
-import { countRender, journeyDebug } from "@/lib/journey/debug";
+import { countRender, journeyDebug, type JumpDebug } from "@/lib/journey/debug";
+import { createJumpWatch, jumpTuning, watchJump, type JumpWatch } from "@/lib/journey/jump-watch";
 import { chapterBoundaries, locateChapter, maxScrollOf, scrollToProgress, type ChapterLocation } from "@/lib/journey/scroll-math";
 import { journeyOverrides } from "@/lib/journey/overrides";
 import { cameraDamped, chooseScrollMode, type ScrollMode } from "@/lib/journey/scroll-mode";
@@ -34,7 +35,8 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
  *     is added as extra height at the end of its section.
  *   - Same-page links to a chapter section (the navigation's `/#about` …) scroll there smoothly
  *     (Lenis, or the browser's smooth scroll without it), land at the section's start below the
- *     header, update the URL and move focus to the section. Instant under reduced motion.
+ *     header, update the URL and move focus to the section – only once the page is there, even if
+ *     the layout changes or a refresh comes while it travels. Instant under reduced motion.
  *   - The current chapter's section is mirrored to the document for the navigation
  *     (chapter-bridge.ts).
  * It re-runs on every client navigation (the pathname), so leaving the home page tears it all down
@@ -56,6 +58,26 @@ export function requestSpineLayout(): void {
 function matches(query: string): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 }
+
+/** A nav jump in flight (see "Jumps to a chapter" in runSpine). */
+type Jump = {
+  index: number;
+  /** The chapter start it is heading for (scroll px), as measured when it was last driven. */
+  target: number;
+  retargets: number;
+  /** Drives so far: a Lenis `onComplete` from a replaced animation is ignored. */
+  drives: number;
+  instant: boolean;
+  watch: JumpWatch;
+  frame: number;
+  timer: number;
+  /** What the debug hooks report. */
+  record: JumpDebug;
+};
+
+/** The visitor's own scrolling during a jump ends it (passive listeners; nothing is cancelled). */
+const TAKEOVER_EVENTS = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "Spacebar"]);
 
 /** How many frames the spine waits for a page's chapter sections to be shown (see below). */
 const SHOW_WAIT_FRAMES = 60;
@@ -152,6 +174,13 @@ function runSpine(els: HTMLElement[]): () => void {
     if (now.chapterIndex !== before.chapterIndex) publish();
   });
 
+  // --- Jumps to a chapter: state (the controller is further down) -------------------------------
+  // Declared before the trigger: its onRefresh sends a jump in flight on again.
+  let jump: Jump | null = null;
+  let lastJump: JumpDebug | null = null;
+  /** A refresh the spine held back while a jump ran (it sets the scroll position): run on landing. */
+  let refreshDeferred = false;
+
   // --- ScrollTrigger: updates and refreshes -----------------------------------------------------
   // Killed in the teardown below (it may be created a frame after useGSAP's context recorded).
   const trigger = ScrollTrigger.create({
@@ -161,14 +190,36 @@ function runSpine(els: HTMLElement[]): () => void {
     onRefresh: () => {
       measure();
       update();
+      // A refresh measures by scrolling to 0 and back to the recorded position (ScrollTrigger's own
+      // way), which cancels a browser smooth scroll wherever it was. The spine holds its own
+      // refreshes back while a jump runs (below), so this is one from elsewhere – or the held one,
+      // run as the jump lands: either way a jump not at its target is sent on toward it.
+      if (jump && Math.abs(window.scrollY - boundaries[jump.index]) > jumpTuning.tolerance) retargetJump(jump);
     },
   });
+  /**
+   * The spine's own refreshes (layout changes, fonts, extra scroll lengths). While a jump runs,
+   * ScrollTrigger's refresh waits until it has landed – it would set the scroll position mid-flight
+   * – and the sections are re-measured at once instead (measuring never scrolls): if the jump's
+   * target moved, the jump follows it.
+   */
+  const refresh = () => {
+    if (jump) {
+      refreshDeferred = true;
+      jump.record.refreshDeferred = true;
+      measure();
+      update();
+      followJumpTarget(jump);
+      return;
+    }
+    ScrollTrigger.refresh();
+  };
   let refreshQueued = 0;
   const queueRefresh = () => {
     if (refreshQueued) return;
     refreshQueued = window.requestAnimationFrame(() => {
       refreshQueued = 0;
-      ScrollTrigger.refresh();
+      refresh();
     });
   };
   const bodyObserver = new ResizeObserver(queueRefresh);
@@ -178,6 +229,7 @@ function runSpine(els: HTMLElement[]): () => void {
   const onResize = () => {
     measure();
     update();
+    if (jump) followJumpTarget(jump);
   };
   window.addEventListener("resize", onResize, { passive: true });
   void document.fonts?.ready.then(queueRefresh);
@@ -206,8 +258,22 @@ function runSpine(els: HTMLElement[]): () => void {
   }
 
   // --- Jumps to a chapter -----------------------------------------------------------------------
+  // A jump ends when the page is verifiably at the chapter's start (PF-009 follow-up 1), never on a
+  // `scrollend` alone: that event may belong to another scroll (an instant scroll just before the
+  // jump dispatches its `scrollend` a frame later – after the jump began, on a busy main thread).
+  //   - Lenis: its `onComplete`, then the position is checked against the target as measured now.
+  //   - Native smooth scroll: the position is watched once per frame (jump-watch.ts): landed = at
+  //     the target and still; stalled = stopped short (cancelled by an instant scroll elsewhere,
+  //     e.g. a refresh) → sent on again.
+  //   - A layout change or a refresh while it runs: the spine's own refresh waits until it lands
+  //     (`refresh` above); the target is re-measured and the jump follows it. A refresh from
+  //     elsewhere sends it on (onRefresh above).
+  //   - Sent on at most `jumpTuning.maxRetargets` times, and given `jumpTuning.timeoutMs`; then it
+  //     lands instantly. The visitor's own scrolling (wheel, touch, pointer, a scrolling key) ends it
+  //     where it is, without moving focus (Lenis does the same with its own animation).
+  //   - Then a held-back refresh runs (it may move the target: the jump goes on) and focus moves to
+  //     the section with `preventScroll`.
   const addedTabIndex = new Set<HTMLElement>();
-  let pendingFocus: (() => void) | null = null;
   const focusSection = (index: number) => {
     const section = els[index];
     if (!section.hasAttribute("tabindex")) {
@@ -216,34 +282,128 @@ function runSpine(els: HTMLElement[]): () => void {
     }
     section.focus({ preventScroll: true });
   };
-  const jumpTo = (index: number) => {
-    const target = boundaries[index];
-    const instant = matches(REDUCED_MOTION_QUERY);
-    const done = () => focusSection(index);
+  const atTarget = (j: Jump) => Math.abs(window.scrollY - boundaries[j.index]) <= jumpTuning.tolerance;
+
+  /** The visitor scrolls during a jump: theirs wins. All listeners passive; nothing is cancelled. */
+  const onTakeover = (event: Event) => {
+    if (!jump) return;
+    if (event.type === "keydown" && !SCROLL_KEYS.has((event as KeyboardEvent).key)) return;
+    endJump(jump, "abandoned");
+  };
+
+  function endJump(j: Jump, outcome: "landed" | "forced" | "abandoned") {
+    if (jump !== j) return;
+    jump = null;
+    window.cancelAnimationFrame(j.frame);
+    window.clearTimeout(j.timer);
+    for (const type of TAKEOVER_EVENTS) window.removeEventListener(type, onTakeover, { capture: true });
+    j.record.outcome = outcome;
+    lastJump = j.record;
+    if (outcome !== "abandoned") {
+      focusSection(j.index);
+      j.record.focusedAt = window.scrollY;
+    }
+    if (refreshDeferred) {
+      // Abandoned (or replaced) with a refresh held back: run it now that nothing is in flight.
+      refreshDeferred = false;
+      queueRefresh();
+    }
+  }
+
+  /** At the target: a held-back refresh runs first (if it moves the target, the jump goes on). */
+  function settleJump(j: Jump, outcome: "landed" | "forced") {
+    if (jump !== j) return;
+    if (refreshDeferred) {
+      refreshDeferred = false;
+      const drives = j.drives;
+      ScrollTrigger.refresh(); // onRefresh re-measures; a jump no longer at its target is sent on
+      if (jump !== j || j.drives !== drives) return;
+    }
+    endJump(j, outcome);
+  }
+
+  /** Scrolls toward the chapter's start as measured now. */
+  function driveJump(j: Jump) {
+    j.drives += 1;
+    const drives = j.drives;
+    j.target = boundaries[j.index];
+    j.record.target = j.target;
+    j.watch = createJumpWatch(window.scrollY, performance.now());
     if (lenis) {
-      lenis.scrollTo(target, { immediate: instant, force: true, onComplete: done });
+      lenis.scrollTo(j.target, {
+        immediate: j.instant,
+        force: true,
+        onComplete: () => {
+          if (jump !== j || j.drives !== drives) return; // a later drive replaced this animation
+          if (atTarget(j)) settleJump(j, "landed");
+          else retargetJump(j);
+        },
+      });
       return;
     }
-    if (Math.abs(window.scrollY - target) < 1) {
-      window.scrollTo({ top: target, behavior: "instant" });
-      done();
+    window.scrollTo({ top: j.target, behavior: j.instant ? "instant" : "smooth" });
+  }
+
+  /** Sends the jump on (its target moved, or its scroll was cancelled); lands at once after too many. */
+  function retargetJump(j: Jump) {
+    if (jump !== j) return;
+    j.retargets += 1;
+    j.record.retargets = j.retargets;
+    if (j.retargets > jumpTuning.maxRetargets) {
+      landJump(j);
       return;
     }
-    let timer = 0;
-    const finish = () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("scrollend", finish);
-      pendingFocus = null;
-      done();
+    lenis?.resize(); // Lenis clamps to the page height it last measured
+    driveJump(j);
+  }
+
+  function followJumpTarget(j: Jump) {
+    if (Math.abs(boundaries[j.index] - j.target) > jumpTuning.tolerance) retargetJump(j);
+  }
+
+  /** Lands instantly (too many re-targets, or the time limit). */
+  function landJump(j: Jump) {
+    if (jump !== j) return;
+    j.target = boundaries[j.index];
+    j.record.target = j.target;
+    if (lenis) {
+      lenis.resize();
+      lenis.scrollTo(j.target, { immediate: true, force: true });
+    } else {
+      window.scrollTo({ top: j.target, behavior: "instant" });
+    }
+    settleJump(j, "forced");
+  }
+
+  /** Native smooth scroll: one look per frame until the jump has landed. */
+  function watchJumpFrames(j: Jump) {
+    j.frame = window.requestAnimationFrame(() => {
+      if (jump !== j) return;
+      const state = watchJump(j.watch, window.scrollY, boundaries[j.index], performance.now());
+      if (state === "landed") settleJump(j, "landed");
+      else if (state === "stalled") retargetJump(j);
+      if (jump === j) watchJumpFrames(j);
+    });
+  }
+
+  const jumpTo = (index: number) => {
+    if (jump) endJump(jump, "abandoned"); // a new jump replaces the one in flight
+    const j: Jump = {
+      index,
+      target: boundaries[index],
+      retargets: 0,
+      drives: 0,
+      instant: matches(REDUCED_MOTION_QUERY),
+      watch: createJumpWatch(window.scrollY, performance.now()),
+      frame: 0,
+      timer: 0,
+      record: { chapter: CHAPTERS[index].id, target: boundaries[index], retargets: 0, refreshDeferred: false, outcome: null, focusedAt: null },
     };
-    pendingFocus?.();
-    pendingFocus = () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("scrollend", finish);
-    };
-    window.addEventListener("scrollend", finish, { passive: true });
-    timer = window.setTimeout(finish, 3000);
-    window.scrollTo({ top: target, behavior: instant ? "instant" : "smooth" });
+    jump = j;
+    for (const type of TAKEOVER_EVENTS) window.addEventListener(type, onTakeover, { capture: true, passive: true });
+    j.timer = window.setTimeout(() => landJump(j), jumpTuning.timeoutMs);
+    driveJump(j);
+    if (jump === j && !lenis) watchJumpFrames(j);
   };
   const onClick = (event: MouseEvent) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -263,7 +423,7 @@ function runSpine(els: HTMLElement[]): () => void {
 
   relayout = () => {
     applyExtraScroll();
-    ScrollTrigger.refresh();
+    refresh();
   };
 
   // --- Debug hooks ------------------------------------------------------------------------------
@@ -286,7 +446,13 @@ function runSpine(els: HTMLElement[]): () => void {
         scrollY: window.scrollY,
         sectionTops: [...tops],
         scrollPadding: padding,
+        jump: jump ? { ...jump.record } : null,
+        lastJump: lastJump ? { ...lastJump } : null,
       };
+    };
+    debug.refreshScroll = (how) => {
+      if (how === "force") ScrollTrigger.refresh();
+      else refresh();
     };
     debug.setExtraScroll = (chapter, viewportHeights) => {
       const entry = CHAPTERS.find((c) => c.id === chapter);
@@ -298,8 +464,8 @@ function runSpine(els: HTMLElement[]): () => void {
 
   return () => {
     relayout = null;
+    if (jump) endJump(jump, "abandoned");
     trigger.kill();
-    pendingFocus?.();
     document.removeEventListener("click", onClick, { capture: true });
     window.removeEventListener("resize", onResize);
     bodyObserver.disconnect();
@@ -313,6 +479,7 @@ function runSpine(els: HTMLElement[]): () => void {
     if (debug) {
       debug.scroll = null;
       debug.setExtraScroll = null;
+      debug.refreshScroll = null;
     }
     deactivateScroll();
     publishChapterSection(null);
