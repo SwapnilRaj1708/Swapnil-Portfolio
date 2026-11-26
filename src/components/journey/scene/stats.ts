@@ -7,10 +7,15 @@ import type { SceneStats } from "@/lib/journey/debug";
  * `renderer.info.render` at every render call; the scene renders once per frame).
  */
 
-/** Bytes per pixel of an uncompressed RGBA8 texture; compressed formats arrive with PF-011+. */
+/** Bytes per pixel of an uncompressed RGBA8 texture. */
 const BYTES_PER_PIXEL = 4;
 
-function textureBytes(texture: Texture): number {
+export function textureBytes(texture: Texture): number {
+  // A compressed texture (KTX2, PF-009) uploads exactly its transcoded mip levels.
+  const mipmaps = (texture as Texture & { isCompressedTexture?: boolean; mipmaps?: { data?: ArrayBufferView }[] }).mipmaps;
+  if ((texture as { isCompressedTexture?: boolean }).isCompressedTexture && Array.isArray(mipmaps)) {
+    return mipmaps.reduce((sum, level) => sum + (level.data?.byteLength ?? 0), 0);
+  }
   const image = texture.image as { width?: number; height?: number } | null;
   const width = image?.width ?? 0;
   const height = image?.height ?? 0;
@@ -29,6 +34,8 @@ export function estimateTextureBytes(root: Object3D): number {
       for (const value of Object.values(material)) {
         if (value instanceof Texture) seen.add(value);
       }
+      const uniforms = (material as Material & { uniforms?: Record<string, { value: unknown }> }).uniforms;
+      if (uniforms) for (const u of Object.values(uniforms)) if (u.value instanceof Texture) seen.add(u.value);
     }
   });
   let total = 0;

@@ -19,6 +19,9 @@
 //     `?tier=static` (three, R3F, the scene, the scroll spine's gsap + ScrollTrigger + Lenis, the
 //     rig) – summed and gated at ≤ 400 KB gzip;
 //   - where it does not: no file in .next/static contains any of those or the loader;
+//   - PF-009: the asset loaders (KTX2Loader, contract, chapter assets) are among the lazy chunks too;
+//     the decoders in public/decoders/ are reported separately (raw, gzip, Brotli) and must be
+//     absent from a build without the 3D layer;
 //   - the dev tools (leva, r3f-perf) are in no file of the build unless it was made with
 //     ENABLE_DEV_PAGES=1 (then they are reported, not gated).
 // Exit code 1 if anything is over its limit.
@@ -102,11 +105,13 @@ const SIGNATURES = {
   scrolltrigger: '"ScrollTrigger"',
   lenis: "lenis-smooth",
   "camera rig": "world-path.json",
+  // PF-009: the asset loaders (KTX2Loader and the contract code, in the lazy chunks).
+  "asset loaders": "THREE.KTX2Loader:",
   leva: "leva__root",
   "r3f-perf": "muiPerf",
 };
 /** May only ever load lazily, with the 3D layer: never in a route's first-load JS. */
-const THREE_D = ["three", "react-three-fiber", "gsap", "scrolltrigger", "lenis", "camera rig"];
+const THREE_D = ["three", "react-three-fiber", "gsap", "scrolltrigger", "lenis", "camera rig", "asset loaders"];
 const DEV_TOOLS = ["leva", "r3f-perf"];
 
 /** Which signatures a file contains. */
@@ -234,6 +239,7 @@ async function main() {
   const scan = await scanStaticJs();
   const devPagesBuild = routes.some((r) => r.path.startsWith("/dev/"));
   printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems });
+  await printDecoders({ journeyBuilt, problems });
 
   for (const p of problems) console.error(`ERROR: ${p}`);
   const over = rows.filter((r) => !r.ok);
@@ -290,7 +296,8 @@ async function measureThreeDChunk(origin, measure) {
     for (const url of files) rows.push({ url, ...(await measure(url)) });
     const sum = (k) => rows.reduce((t, r) => t + r[k], 0);
     // PF-008: the scroll spine (gsap, ScrollTrigger, Lenis) and the camera rig load with the scene.
-    const missing = ["three", "gsap", "scrolltrigger", "lenis", "camera rig"].filter((name) => !rows.some((r) => r.hits.includes(name)));
+    // PF-009: and the asset loaders (KTX2Loader, the contract, the chapter assets).
+    const missing = ["three", "gsap", "scrolltrigger", "lenis", "camera rig", "asset loaders"].filter((name) => !rows.some((r) => r.hits.includes(name)));
     return {
       files: rows,
       gzip: sum("gzip"),
@@ -310,7 +317,7 @@ function printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems }) {
     if (!chunk || chunk.error) {
       problems.push(`3D chunk: ${chunk?.error ?? "not measured"}`);
     } else {
-      console.log(`Lazy journey chunks (loaded by / after the page is interactive: three, R3F, the scene, gsap + ScrollTrigger, Lenis, the rig), ${chunk.files.length} file(s):`);
+      console.log(`Lazy journey chunks (loaded by / after the page is interactive: three, R3F, the scene, gsap + ScrollTrigger, Lenis, the rig, the asset loaders), ${chunk.files.length} file(s):`);
       for (const f of chunk.files) console.log(`  ${f.url}  ${fmt(f.gzip)} gzip, ${fmt(f.brotli)} Brotli, ${fmt(f.raw)} raw  [${f.hits.join(", ") || "scene code"}]`);
       const limit = budgets.threeDChunk.gzipBytes;
       console.log(`  Sum: ${fmt(chunk.gzip)} gzip (gated, ≤ ${fmt(limit)}: ${chunk.gzip <= limit ? "ok" : "OVER"}), ${fmt(chunk.brotli)} Brotli, ${fmt(chunk.raw)} raw`);
@@ -331,6 +338,40 @@ function printThreeD({ journeyBuilt, chunk, scan, devPagesBuild, problems }) {
     console.log(`  Dev tools (leva, r3f-perf) in the build's chunks (${scan.count} JS files searched): ${devFound.length ? "FOUND" : "absent"}`);
     for (const n of devFound) problems.push(`dev tool ${n} found in a build without dev tools: ${where(n)}`);
   }
+  console.log("");
+}
+
+/**
+ * PF-009: the decoders the site serves itself (public/decoders/three-r<REVISION>/, copied from
+ * three.js before every build) – reported separately from the JS chunks: they are requested only
+ * when an asset loads (never by the home page until PF-010 wires chapter assets). A build without
+ * the 3D layer must have none. Also lists the copies the bundler emits for KTX2Loader's default
+ * transcoder path (`new URL(…, import.meta.url)`): never requested, the site sets its own path.
+ */
+async function printDecoders({ journeyBuilt, problems }) {
+  const dir = path.join(ROOT, "public", "decoders");
+  const files = await readdir(dir, { recursive: true }).then(
+    (list) => list.filter((f) => /\.(js|wasm)$/.test(f)).sort(),
+    () => [],
+  );
+  console.log("Decoders served by the site (PF-009; loaded on the first asset load, not part of the lazy chunks above)\n");
+  if (!journeyBuilt) {
+    if (files.length) problems.push(`D-39: public/decoders/ holds ${files.length} file(s) in a build without the 3D layer`);
+    console.log(`  public/decoders/: ${files.length ? "PRESENT" : "absent"} (a build without the 3D layer serves no decoder)\n`);
+    return;
+  }
+  if (!files.length) problems.push("public/decoders/ is empty: `npm run decoders` did not run before the build");
+  for (const f of files) {
+    const body = await readFile(path.join(dir, f));
+    const gzip = gzipSync(body).length;
+    const brotli = brotliCompressSync(body, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
+    console.log(`  /decoders/${f.replaceAll("\\", "/")}  ${fmt(body.length)} raw, ${fmt(gzip)} gzip, ${fmt(brotli)} Brotli`);
+  }
+  const media = await readdir(path.join(ROOT, ".next", "static", "media")).then(
+    (list) => list.filter((f) => /basis_transcoder/.test(f)),
+    () => [],
+  );
+  if (media.length) console.log(`  Also emitted by the bundler for KTX2Loader's default path, never requested: ${media.map((f) => `_next/static/media/${f}`).join(", ")}`);
   console.log("");
 }
 

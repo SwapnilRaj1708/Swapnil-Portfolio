@@ -13,7 +13,9 @@ import { projects } from "./index";
 const ROOT = path.resolve(__dirname, "../..");
 const SCANNED = ["src", "public", "docs", "scripts", "e2e", "CLAUDE.md", "README.md", "CONTENT-LICENSE.md"];
 const TEXT = /\.(ts|tsx|mjs|js|json|md|css|txt|svg|html|xml|yml|yaml)$/i;
-const SKIP_DIRS = new Set(["node_modules", "vendor", ".next"]);
+// `decoders`: public/decoders/, three.js's own transcoders copied before each build (PF-009,
+// git-ignored, never ours – the Basis transcoder holds a ten-digit 32-bit constant).
+const SKIP_DIRS = new Set(["node_modules", "vendor", ".next", "decoders"]);
 
 function textFiles(target: string): string[] {
   const full = path.join(ROOT, target);

@@ -6,8 +6,9 @@ import { clipTimeForFrame, frameAt, parsePathTiming, resolveChapterFrames, type 
 /**
  * The journey camera path (STANDARDS.md §6): `world-path.glb` (a camera named `CAM_journey` with the
  * animation clip `journey`) and `world-path.json` (fps, first and last frame, CH_ marker frames),
- * both from one fixed public folder. PF-009 (the asset pipeline) may move the folder by changing
- * JOURNEY_PATH_DIR; nothing else names it (scripts/make-standin-path.mjs writes there).
+ * both from one fixed public folder, JOURNEY_PATH_DIR; nothing else names it
+ * (scripts/make-standin-path.mjs writes there). PF-009 kept it: the path is not a chapter asset and
+ * does not go through the asset pipeline (whose output is public/assets/<chapter>/<slug>/).
  *
  * Replacing the two files with a new export needs no code change: the camera is found by name, the
  * clip by name, the frame range and the chapter starts come from the JSON, and every animated

@@ -1,4 +1,4 @@
-import type { JourneyState } from "./store";
+import type { JourneyState, LoadingState } from "./store";
 
 /**
  * `window.__journey`: hooks for the browser tests, the review captures and the numbers script.
@@ -109,7 +109,11 @@ export type JourneyDebug = {
   setExtraScroll: ((chapter: string, viewportHeights: number) => void) | null;
   /** The camera rig (null until the canvas has mounted it). */
   rig: (() => RigDebug) | null;
+  /** Per-chapter assets (PF-009): what is loaded, what the chapter rules want, the loading progress. */
+  assets: (() => AssetsDebug) | null;
 };
+
+export type AssetsDebug = { loaded: string[]; wanted: string[]; loading: LoadingState };
 
 declare global {
   interface Window {
@@ -140,6 +144,7 @@ export function installJourneyDebug(state: () => JourneyState): JourneyDebug | n
     scroll: null,
     setExtraScroll: null,
     rig: null,
+    assets: null,
   };
   return window.__journey;
 }

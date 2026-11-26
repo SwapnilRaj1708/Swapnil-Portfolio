@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     ".lighthouseci/**",
     "test-results/**",
     "playwright-report/**",
+    // three.js's own decoders, copied before every build (scripts/copy-decoders.mjs, PF-009).
+    "public/decoders/**",
   ]),
 ]);
 

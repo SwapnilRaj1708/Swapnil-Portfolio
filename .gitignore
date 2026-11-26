@@ -33,5 +33,8 @@ yarn-error.log*
 # Fonts downloaded at build time (scripts/fetch-fonts.mjs) – their licence forbids committing them
 /src/fonts/vendor/
 
+# Decoders copied from the installed three.js before every build (scripts/copy-decoders.mjs, PF-009)
+/public/decoders/
+
 # Blender work folder – never committed (D-22)
 /Blender Assets/

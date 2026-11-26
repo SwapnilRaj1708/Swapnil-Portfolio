@@ -93,7 +93,7 @@ test.describe("keyboard path through the shell", () => {
 test.describe("dev-only pages", () => {
   test.skip(process.env.ENABLE_DEV_PAGES === "1", "this build was made with ENABLE_DEV_PAGES=1");
 
-  for (const route of ["/dev/styleguide", "/dev/type"]) {
+  for (const route of ["/dev/styleguide", "/dev/type", "/dev/assets"]) {
     test(`${route} returns 404 without ENABLE_DEV_PAGES`, async ({ page }) => {
       const response = await page.goto(route);
       expect(response?.status()).toBe(404);
