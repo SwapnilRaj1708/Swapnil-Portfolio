@@ -174,9 +174,12 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
     const verify = async (label: string) => {
       await scrollToY(page, 0);
       const measured = await page.evaluate(() => {
-        const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+        // Where the browser lands an anchor on each section: its top less its scroll-margin-top (PF-030).
         const ids = ["top", "about", "experience", "work", "skills", "contact"];
-        return ids.map((id, i) => (i === 0 ? 0 : document.getElementById(id)!.getBoundingClientRect().top + window.scrollY - padding));
+        return ids.map((id, i) => {
+          const el = document.getElementById(id)!;
+          return i === 0 ? 0 : el.getBoundingClientRect().top + window.scrollY - (Number.parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
+        });
       });
       const s = await scroll(page);
       console.log(`[chapter boundaries] ${info.project.name} ${label}: ${s.boundaries.map((b) => b.toFixed(1)).join(", ")} (max ${s.max})`);
@@ -688,10 +691,11 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
         const s = await scroll(page);
         const mid = await page.evaluate(() => (window as Window & { __mid?: { start: number | null; at: number | null; inFlight: boolean; focusY: number | null } }).__mid!);
         const landed = await page.evaluate((sectionId) => {
-          const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+          const section = document.getElementById(sectionId)!;
+          const offset = Number.parseFloat(getComputedStyle(section).scrollMarginTop) || 0;
           const max = document.documentElement.scrollHeight - window.innerHeight;
           return {
-            target: Math.min(document.getElementById(sectionId)!.getBoundingClientRect().top + window.scrollY - padding, max),
+            target: Math.min(section.getBoundingClientRect().top + window.scrollY - offset, max),
             headerBottom: document.querySelector("header")!.getBoundingClientRect().bottom,
             headingTop: document.getElementById(`${sectionId}-heading`)!.getBoundingClientRect().top,
             blocks: document.querySelectorAll("[data-test-block]").length,
@@ -746,8 +750,8 @@ test.describe("scroll spine and camera rig (PF-008)", () => {
     await page.waitForFunction(() => ((window as Window & { __positions?: number[] }).__positions ?? []).length > 0, null, { timeout: 10_000 });
     await page.waitForTimeout(600);
     const result = await page.evaluate(() => {
-      const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-      const target = document.getElementById("skills")!.getBoundingClientRect().top + window.scrollY - padding;
+      const skills = document.getElementById("skills")!;
+      const target = skills.getBoundingClientRect().top + window.scrollY - (Number.parseFloat(getComputedStyle(skills).scrollMarginTop) || 0);
       return { positions: (window as Window & { __positions?: number[] }).__positions!, scrollY: window.scrollY, target };
     });
     console.log(`[reduced motion jump] ${info.project.name}: scroll positions ${result.positions.join(", ")}`);
@@ -881,7 +885,7 @@ test.describe("static tier keeps stage 1 scrolling (PF-008)", () => {
     await page.waitForTimeout(400);
     const landed = await page.evaluate(() => ({
       y: window.scrollY,
-      target: document.getElementById("about")!.getBoundingClientRect().top + window.scrollY - (Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0),
+      target: document.getElementById("about")!.getBoundingClientRect().top + window.scrollY - (Number.parseFloat(getComputedStyle(document.getElementById("about")!).scrollMarginTop) || 0),
       focused: document.activeElement?.id ?? null,
       tabindex: document.getElementById("about")!.getAttribute("tabindex"),
     }));

@@ -56,9 +56,9 @@ export type ScrollDebug = {
   /** The largest scroll position (px). */
   max: number;
   scrollY: number;
-  /** Section tops (document px) and the scroll padding the boundaries were measured with. */
+  /** Section tops (document px) and the header offset (the sections' `scroll-margin-top`) the boundaries were measured with. */
   sectionTops: number[];
-  scrollPadding: number;
+  headerOffset: number;
   /** The nav jump in flight (PF-009 follow-up 1), or null. */
   jump: JumpDebug | null;
   /** The last nav jump that ended, or null. */

@@ -37,15 +37,15 @@ export function scrollToProgress(scroll: number, max: number): number {
 /**
  * The scroll position at which each chapter starts, from its section's top (document px).
  * A section "starts" when its top reaches the bottom of the fixed header – the browser's own
- * anchor landing (`scroll-padding-top`), so a jump or a deep link to `#about` lands exactly on the
+ * anchor landing (the section's `scroll-margin-top`, PF-030), so a jump or a deep link to `#about` lands exactly on the
  * bus chapter's start. The first chapter starts at 0 (the top of the page). Each boundary is
  * clamped to 0–max and never before the previous one (sections are in document order).
  */
-export function chapterBoundaries(sectionTops: readonly number[], scrollPadding: number, max: number, out: number[] = []): number[] {
+export function chapterBoundaries(sectionTops: readonly number[], headerOffset: number, max: number, out: number[] = []): number[] {
   out.length = sectionTops.length;
   let previous = 0;
   for (let i = 0; i < sectionTops.length; i++) {
-    const raw = i === 0 ? 0 : sectionTops[i] - scrollPadding;
+    const raw = i === 0 ? 0 : sectionTops[i] - headerOffset;
     const clamped = Math.min(max, Math.max(previous, Number.isFinite(raw) ? raw : previous));
     out[i] = clamped;
     previous = clamped;
