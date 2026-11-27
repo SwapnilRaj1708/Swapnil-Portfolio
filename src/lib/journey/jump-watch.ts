@@ -2,9 +2,10 @@
  * When has a nav jump landed? (PF-009 follow-up 1.) A jump to a chapter (scroll-spine.tsx) moves
  * focus to the section only once the page is verifiably at the chapter's start – never on the
  * strength of a `scrollend` event alone. A `scrollend` can belong to another scroll: an instant
- * scroll just before the jump (a focused header link scrolled "into view", which Chromium does for a
- * link inside the `scroll-padding-top` band) dispatches its `scrollend` a frame later, and on a busy
- * main thread that is after the jump has begun (PF-009 CI failure).
+ * scroll just before the jump (a focused header link scrolled "into view", which Chromium did for a
+ * link inside the `scroll-padding-top` band until PF-030 moved the header offset to the targets'
+ * `scroll-margin-top`) dispatches its `scrollend` a frame later, and on a busy main thread that is
+ * after the jump has begun (PF-009 CI failure). Any other instant scroll can do the same.
  *
  * The browser's smooth scroll is watched once per animation frame instead:
  *   landed   at the target (within `tolerance`) and unchanged since the previous frame;

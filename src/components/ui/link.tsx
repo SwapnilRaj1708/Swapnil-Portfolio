@@ -1,6 +1,7 @@
 import { clsx } from "clsx";
 import NextLink from "next/link";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { AnchorLink } from "./anchor-link";
 
 export type LinkVariant = "inline" | "nav" | "external";
 
@@ -49,8 +50,8 @@ function ExternalIcon() {
 
 /**
  * Link: `inline` for links in running text, `nav` for navigation, `external` for other sites
- * (opens in a new tab, says so to screen readers). Same-site links use Next's client routing;
- * mailto: and other non-http links use a plain anchor.
+ * (opens in a new tab, says so to screen readers). Same-site links use Next's client routing
+ * (`AnchorLink` for one with a `#fragment`); mailto: and other non-http links use a plain anchor.
  */
 export function Link({ href, variant = "inline", current, className, children, ...rest }: LinkProps) {
   const classes = clsx(styles[variant], className);
@@ -74,9 +75,11 @@ export function Link({ href, variant = "inline", current, className, children, .
   }
 
   const ariaCurrent = current === "location" ? "location" : current ? "page" : undefined;
+  // An anchor (`/#about`) must also scroll on an address with a query string (PF-030 follow-up 1).
+  const Internal = href.includes("#") ? AnchorLink : NextLink;
   return (
-    <NextLink href={href} aria-current={ariaCurrent} className={classes} {...rest}>
+    <Internal href={href} aria-current={ariaCurrent} className={classes} {...rest}>
       {children}
-    </NextLink>
+    </Internal>
   );
 }

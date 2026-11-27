@@ -1,5 +1,6 @@
 import NextLink from "next/link";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { AnchorLink } from "./anchor-link";
 import { buttonClasses, type ButtonSize, type ButtonVariant } from "./button";
 
 export type ButtonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
@@ -24,9 +25,11 @@ export function ButtonLink({ href, variant = "primary", size = "lg", className, 
       </a>
     );
   }
+  // An anchor (`/#contact`) must also scroll on an address with a query string (PF-030 follow-up 1).
+  const Internal = href.includes("#") ? AnchorLink : NextLink;
   return (
-    <NextLink href={href} className={classes} {...rest}>
+    <Internal href={href} className={classes} {...rest}>
       {children}
-    </NextLink>
+    </Internal>
   );
 }

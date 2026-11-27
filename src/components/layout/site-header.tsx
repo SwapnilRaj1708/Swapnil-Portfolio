@@ -3,10 +3,14 @@ import { identity, site } from "@/content";
 import { Container } from "./container";
 import { SiteNav } from "./site-nav";
 
-/** Sticky header: name (home link) on the left, persistent navigation on the right. */
+/**
+ * Sticky header: name (home link) on the left, persistent navigation on the right.
+ * `data-site-header`: its controls take no scroll offset, so focusing one never scrolls the page
+ * (PF-030, globals.css).
+ */
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-background">
+    <header data-site-header className="sticky top-0 z-40 border-b border-line bg-background">
       <Container className="flex min-h-header items-center justify-between gap-4 noscript:flex-wrap noscript:py-3">
         <NextLink
           href="/"

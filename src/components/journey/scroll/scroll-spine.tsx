@@ -128,7 +128,7 @@ function runSpine(els: HTMLElement[]): () => void {
   const tops: number[] = [];
   const location: ChapterLocation = { index: 0, progress: 0 };
   let max = 0;
-  let padding = 0;
+  let headerOffset = 0;
 
   const applyExtraScroll = () => {
     CHAPTERS.forEach((c, i) => {
@@ -140,11 +140,13 @@ function runSpine(els: HTMLElement[]): () => void {
   const measure = () => {
     const scroller = document.scrollingElement ?? root;
     max = maxScrollOf(scroller.scrollHeight, scroller.clientHeight);
-    padding = Number.parseFloat(getComputedStyle(root).scrollPaddingTop) || 0;
+    // The sticky header's offset as the browser applies it when it lands an anchor on a section:
+    // the sections' `scroll-margin-top` (globals.css, PF-030; one rule for every section).
+    headerOffset = Number.parseFloat(getComputedStyle(els[0]).scrollMarginTop) || 0;
     const y = window.scrollY;
     tops.length = els.length;
     for (let i = 0; i < els.length; i++) tops[i] = els[i].getBoundingClientRect().top + y;
-    chapterBoundaries(tops, padding, max, boundaries);
+    chapterBoundaries(tops, headerOffset, max, boundaries);
   };
 
   const update = () => {
@@ -445,7 +447,7 @@ function runSpine(els: HTMLElement[]): () => void {
         max,
         scrollY: window.scrollY,
         sectionTops: [...tops],
-        scrollPadding: padding,
+        headerOffset,
         jump: jump ? { ...jump.record } : null,
         lastJump: lastJump ? { ...lastJump } : null,
       };

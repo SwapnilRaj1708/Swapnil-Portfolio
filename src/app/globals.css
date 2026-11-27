@@ -242,7 +242,6 @@
     color-scheme: dark;
     background-color: var(--color-background);
     color: var(--color-text);
-    scroll-padding-top: var(--spacing-header);
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
@@ -252,6 +251,26 @@
     color: var(--color-text);
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
+  }
+
+  /*
+   * Room for the sticky header (PF-030). Whatever the browser scrolls into view – an anchor or
+   * deep link (`/#about`), the skip link's target, a focused field or link – lands just below the
+   * header. The offset sits on the elements (`scroll-margin-top`), not on the scroll container:
+   * `scroll-padding-top` on <html> made Chromium treat a focused header control as hidden behind
+   * that band and scroll the page ~450 px up for every header link Tab reached. The header and
+   * everything in it take no offset – it is always on screen. The offset is the header's whole
+   * height: its row (`min-h-header`) plus its 1 px bottom border (`border-b`), so a target lands
+   * exactly at the header's bottom edge. The journey's chapter boundaries read it back from the
+   * sections (scroll-spine.tsx), so it is defined here only.
+   */
+  * {
+    scroll-margin-top: calc(var(--spacing-header) + 1px);
+  }
+
+  [data-site-header],
+  [data-site-header] * {
+    scroll-margin-top: 0;
   }
 
   :focus-visible {
